@@ -16,9 +16,14 @@ Open http://localhost:5180 — enter a name, play. Scores save on this device (l
 
 ## Deploy (GitHub + Vercel + Render)
 
-- **GitHub:** push this repo to `tuongnp-sys/emmind`
-- **Vercel:** import repo — uses [`vercel.json`](vercel.json) (`npm run build` → `dist/`)
-- **Render:** Blueprint from [`render.yaml`](render.yaml) — static site, same build
+| Host | URL |
+|------|-----|
+| **GitHub** | https://github.com/tuongnp-sys/emmind |
+| **Vercel** | https://emmind.vercel.app |
+| **Render** | https://emmind.onrender.com |
+
+- **Vercel:** [`vercel.json`](vercel.json) — `npm run build` → `dist/`
+- **Render:** [`render.yaml`](render.yaml) — static site, same build
 
 Both hosts serve the standalone itch build (no portal SDK required for basic play).
 
