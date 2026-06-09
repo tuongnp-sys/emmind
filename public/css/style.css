@@ -1652,6 +1652,13 @@ body.game-mobile-play .touch-controls.is-visible {
     font-size: 1.12rem;
   }
 
+  body.game-mobile-play .joystick-base {
+    width: 8.125rem;
+    height: 8.125rem;
+    min-width: 130px;
+    min-height: 130px;
+  }
+
   body.game-mobile-play .overlay {
     z-index: 30;
   }

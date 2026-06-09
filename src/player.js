@@ -206,7 +206,7 @@ export class Player {
     } else {
       let dx = 0;
       const analogX = options.groundMoveX;
-      if (typeof analogX === 'number' && Math.abs(analogX) > 0.05) {
+      if (typeof analogX === 'number' && Math.abs(analogX) > 0.03) {
         dx = analogX;
       } else {
         if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;

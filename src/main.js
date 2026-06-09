@@ -252,8 +252,12 @@ let victoryStingerPlayedThisRun = false;
 let viewportSyncTimer = null;
 /** @type {Set<HTMLElement>} */
 const activePointerHolds = new Set();
+/** Mobile: lerp rate for joystick input smoothing (higher = snappier). */
+const TOUCH_INPUT_SMOOTH = 14;
 /** Normalized analog from joystick when enabled (-1..1). */
 const touchMoveVector = { x: 0, y: 0 };
+/** Smoothed joystick vector fed to player movement. */
+const touchMoveVectorSmoothed = { x: 0, y: 0 };
 let energyCountdownTimer = null;
 /** @type {{ energy: number, isVip: boolean, nextRefillAt: string | null, msUntilRefill: number } | null} */
 let energyStatus = null;
@@ -552,6 +556,24 @@ function clearTouchMovementKeys(force = false) {
   setDown(false);
   touchMoveVector.x = 0;
   touchMoveVector.y = 0;
+  resetTouchInputSmoothing();
+}
+
+function resetTouchInputSmoothing() {
+  touchMoveVectorSmoothed.x = 0;
+  touchMoveVectorSmoothed.y = 0;
+}
+
+function updateTouchInputSmoothing(dt) {
+  if (!shouldUseTouchControls() || !isPlaying() || isPaused || isEnlightenment()) {
+    resetTouchInputSmoothing();
+    return;
+  }
+  const t = 1 - Math.exp(-TOUCH_INPUT_SMOOTH * dt);
+  touchMoveVectorSmoothed.x += (touchMoveVector.x - touchMoveVectorSmoothed.x) * t;
+  touchMoveVectorSmoothed.y += (touchMoveVector.y - touchMoveVectorSmoothed.y) * t;
+  if (Math.abs(touchMoveVectorSmoothed.x) < 0.01) touchMoveVectorSmoothed.x = 0;
+  if (Math.abs(touchMoveVectorSmoothed.y) < 0.01) touchMoveVectorSmoothed.y = 0;
 }
 
 function hasActiveTouchMovement() {
@@ -568,40 +590,24 @@ function syncTouchLayout() {
   const inEnlightenment = isEnlightenment();
   const freeMove = !inEnlightenment && currentLayer >= 2;
   const groundMove = !inEnlightenment && currentLayer < 2;
+  const showJoystick = groundMove || freeMove;
 
   if (touchJoystickMount) {
-    const showJoystick = groundMove;
     touchJoystickMount.classList.toggle('is-hidden', !showJoystick);
     touchJoystickMount.hidden = !showJoystick;
     touchJoystickMount.setAttribute('aria-hidden', showJoystick ? 'false' : 'true');
     if (!showJoystick) {
       mobileJoystick?.release();
-    } else {
+    } else if (groundMove) {
       mobileJoystick?.setLockAxis('x');
+    } else {
+      mobileJoystick?.setLockAxis(null);
     }
   }
 
   if (touchDpad) {
-    const showDpad = freeMove;
-    touchDpad.classList.toggle('is-hidden', !showDpad);
-    touchDpad.hidden = !showDpad;
-    if (showDpad) {
-      touchDpad.classList.remove('touch-dpad--ground');
-      touchDpad.classList.add('touch-dpad--fly');
-    }
-  }
-
-  for (const el of [touchLeft, touchRight]) {
-    if (!el) continue;
-    el.classList.add('is-hidden');
-    el.hidden = true;
-  }
-
-  const showVert = freeMove;
-  for (const el of [touchFlyUp, touchFlyDown]) {
-    if (!el) continue;
-    el.classList.toggle('is-hidden', !showVert);
-    el.hidden = !showVert;
+    touchDpad.classList.add('is-hidden');
+    touchDpad.hidden = true;
   }
 
   if (touchJump) {
@@ -630,15 +636,15 @@ function getPlayerMoveOptions() {
   }
   if (currentLayer < 2) {
     const opts = { freeMove: false };
-    if (touchMoveVector.x !== 0) {
-      opts.groundMoveX = touchMoveVector.x;
+    if (touchMoveVectorSmoothed.x !== 0) {
+      opts.groundMoveX = touchMoveVectorSmoothed.x;
     }
     return opts;
   }
 
   let moveVector = null;
-  if (touchMoveVector.x !== 0 || touchMoveVector.y !== 0) {
-    moveVector = { x: touchMoveVector.x, y: touchMoveVector.y };
+  if (touchMoveVectorSmoothed.x !== 0 || touchMoveVectorSmoothed.y !== 0) {
+    moveVector = { x: touchMoveVectorSmoothed.x, y: touchMoveVectorSmoothed.y };
   }
   return { freeMove: true, moveVector };
 }
@@ -1911,6 +1917,7 @@ function finishLayerTransition() {
     }
     resetLayerTimer();
     scriptureCombo = 0;
+    syncTouchLayout();
   }
 }
 
@@ -2046,6 +2053,7 @@ function gameLoop(timestamp) {
   background.update(dt);
 
   if (!inLayerTransition) {
+    updateTouchInputSmoothing(dt);
     player.update(dt, keys, getPlayerMoveOptions());
     if (!inEnlightenment) {
       checkLayerProgress(dt);

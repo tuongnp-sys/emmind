@@ -16,7 +16,7 @@ export class TouchJoystick {
     this.dx = 0;
     this.dy = 0;
     this.radius = 48;
-    this.deadZone = 0.18;
+    this.deadZone = 0.10;
 
     if (!this.base || !this.stick) return;
 
