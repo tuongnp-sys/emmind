@@ -1,0 +1,41 @@
+/* Standalone overrides — no external fonts, hide commerce/energy UI */
+
+:root {
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.emmind-hidden {
+  display: none !important;
+}
+
+/* Portal hosts (Poki / CrazyGames / GamePix) — minimal chrome, instant play */
+body.portal-mode .header,
+body.portal-mode .footer {
+  display: none !important;
+}
+
+body.portal-mode #leaderboard-panel {
+  display: none !important;
+}
+
+body.portal-mode #hud .hud-logout {
+  display: none !important;
+}
+
+body.portal-mode #overlay-start h2 {
+  font-size: 1.35rem;
+}
+
+body.portal-mode #overlay-start .overlay-desktop-only,
+body.portal-mode #overlay-start .overlay-mobile-only {
+  display: none !important;
+}
+
+body.portal-mode #overlay-start::after {
+  content: 'Breathe. Focus. Ascend.';
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}

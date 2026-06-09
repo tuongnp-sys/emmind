@@ -1,0 +1,22 @@
+{
+  "name": "emmind",
+  "version": "1.0.0",
+  "private": true,
+  "description": "7 Layers of Ascent — standalone HTML5 (portal-ready)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:portal": "node scripts/build-portal.mjs",
+    "preview": "vite preview",
+    "measure:dist": "node scripts/measure-dist.mjs",
+    "package:itch": "node scripts/package-portal.mjs itch",
+    "package:poki": "node scripts/package-portal.mjs poki",
+    "package:crazygames": "node scripts/package-portal.mjs crazygames",
+    "package:gamepix": "node scripts/package-portal.mjs gamepix",
+    "sync:joymed": "node scripts/sync-from-joymed.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Emmind — 7 Layers of Ascent</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/emmind.css" />
+  <script src="https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">Emmind</h1>
+      <p class="tagline">7 Layers of Ascent</p>
+    </header>
+
+    <main class="main">
+      <section id="auth-panel" class="panel auth-panel">
+        <h2>Enter Your Path</h2>
+        <p class="panel-desc">Choose a name to save your best score on this device.</p>
+        <form id="login-form" class="login-form">
+          <label for="username-input">Name</label>
+          <input
+            id="username-input"
+            type="text"
+            name="username"
+            placeholder="Your mindful name"
+            autocomplete="username"
+            maxlength="24"
+            required
+          />
+          <label class="remember-me" for="remember-me">
+            <input id="remember-me" type="checkbox" name="remember-me" checked />
+            Remember me
+          </label>
+          <button type="submit" class="btn btn-primary">Begin Journey</button>
+        </form>
+        <p id="auth-error" class="error-text" hidden></p>
+      </section>
+
+      <section id="game-section" class="game-section" hidden>
+        <div id="hud" class="hud">
+          <div class="hud-item">
+            <span class="hud-label">Player</span>
+            <span id="hud-username" class="hud-value">—</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">Best Score</span>
+            <span id="hud-highscore" class="hud-value">0</span>
+          </div>
+          <div class="hud-item hud-item-energy emmind-hidden">
+            <span class="hud-label">Energy</span>
+            <span id="hud-energy" class="hud-value hud-value-energy">∞</span>
+            <span id="hud-energy-countdown" class="hud-energy-countdown" hidden></span>
+          </div>
+          <div id="vip-badge" class="vip-badge emmind-hidden" hidden>VIP</div>
+          <button type="button" id="btn-logout" class="hud-logout">Change name</button>
+        </div>
+
+        <details id="leaderboard-panel" class="leaderboard-panel panel">
+          <summary class="leaderboard-summary">Top Ascenders</summary>
+          <div class="leaderboard-body">
+            <ol id="leaderboard-list" class="leaderboard-list"></ol>
+            <p id="leaderboard-empty" class="leaderboard-empty" hidden>No scores yet — be the first.</p>
+            <p id="leaderboard-error" class="error-text leaderboard-error" hidden>
+              Could not load leaderboard.
+            </p>
+          </div>
+        </details>
+
+        <div id="game-controls" class="game-controls is-hidden" aria-hidden="true">
+          <button type="button" id="btn-pause" class="btn btn-control">Pause</button>
+          <button type="button" id="btn-resume" class="btn btn-control is-hidden">Resume</button>
+          <button type="button" id="btn-stop" class="btn btn-control btn-stop">Stop</button>
+        </div>
+
+        <div id="game-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+        <div class="game-play-stack">
+          <div id="game-stats-bar" class="game-stats-bar is-hidden" aria-hidden="true">
+            <div class="game-stats-row">
+              <div class="game-stat game-stat--layer">
+                <span class="game-stat-label">Layer</span>
+                <span id="stat-layer" class="game-stat-value">1 / 7</span>
+              </div>
+              <div class="game-stat game-stat--progress">
+                <span class="game-stat-label">Practice</span>
+                <span id="stat-progress" class="game-stat-value">0 / 180</span>
+              </div>
+              <div class="game-stat game-stat--combo">
+                <span class="game-stat-label">Flow</span>
+                <span id="stat-combo" class="game-stat-value">0</span>
+              </div>
+              <div class="game-stat game-stat--score">
+                <span class="game-stat-label">Score</span>
+                <span id="stat-score" class="game-stat-value">0</span>
+              </div>
+              <div class="game-stat game-stat--best">
+                <span class="game-stat-label">Best</span>
+                <span id="stat-best" class="game-stat-value">0</span>
+              </div>
+              <div class="game-stat game-stat--halo">
+                <span class="game-stat-label">Mindfulness</span>
+                <span id="stat-halo" class="game-stat-value">0%</span>
+              </div>
+              <span id="stat-energy" class="game-stat-badge game-stat-badge--energy emmind-hidden" hidden>Energy —</span>
+              <span id="stat-shield" class="game-stat-badge game-stat-badge--shield" hidden>Shield</span>
+              <span id="stat-downgrades" class="game-stat-badge game-stat-badge--downgrades">Downgrades 0/3</span>
+            </div>
+            <div class="game-stat-halo-bar" aria-hidden="true">
+              <div id="stat-halo-fill" class="game-stat-halo-fill"></div>
+            </div>
+            <div class="game-stat-layer-progress" aria-hidden="true">
+              <div id="stat-layer-progress-fill" class="game-stat-layer-progress-fill"></div>
+            </div>
+            <span id="game-build-stamp" class="game-build-stamp" hidden aria-hidden="true"></span>
+          </div>
+
+          <div id="game-session-bar" class="game-session-bar is-hidden emmind-hidden" aria-hidden="true">
+            <div class="game-session-energy">
+              <span class="game-session-energy-label">Energy</span>
+              <span id="session-hud-energy" class="game-session-energy-value">∞</span>
+              <span id="session-hud-energy-countdown" class="game-session-energy-countdown" hidden></span>
+            </div>
+            <div class="game-session-actions">
+              <button type="button" id="btn-pause-mobile" class="btn-session btn-session-pause" aria-label="Pause">Pause</button>
+              <button type="button" id="btn-resume-mobile" class="btn-session btn-session-resume is-hidden" aria-label="Resume">Resume</button>
+              <button type="button" id="btn-stop-mobile" class="btn-session btn-session-stop" aria-label="Stop run">Stop</button>
+            </div>
+          </div>
+
+          <div id="game-stage" class="game-stage">
+            <div id="game-stage-viewport" class="game-stage-viewport">
+              <div class="canvas-wrap">
+                <canvas
+                  id="game-canvas"
+                  width="900"
+                  height="520"
+                  role="img"
+                  aria-label="Meditation ascent game. Layer 1: move horizontally and jump. Layer 2 and above: fly in four directions."
+                ></canvas>
+
+                <div id="overlay-start" class="overlay is-hidden" aria-hidden="true">
+                  <h2>Center Your Heart</h2>
+                  <div class="overlay-mobile-only">
+                    <p>Left: move · Right: <strong>Jump</strong> · Gold = shield; meet gray thoughts with gentle awareness.</p>
+                    <p>Layer 2+: use the <strong>arrow pad</strong> (4 directions) · Mindfulness ≥30%: <strong>Pulse</strong>.</p>
+                  </div>
+                  <div class="overlay-desktop-only">
+                    <p>Fill the <strong>green Practice bar</strong> and reach <strong>80% Mindfulness</strong> (gold bar) to advance each layer.</p>
+                    <p>Collect bright <strong>golden Scriptures</strong> for +Mindfulness and shield. Three gentle reminders invite you to pause and breathe.</p>
+                    <p>Layer 1: move left/right, jump. <strong>Layer 2+</strong>: fly in all four directions.</p>
+                    <p>Move: <kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> · Jump: <kbd>Space</kbd> · Layer 2+ Up/Down: <kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd></p>
+                  </div>
+                  <p id="start-error" class="error-text start-error" hidden role="alert"></p>
+                  <button type="button" id="btn-start-game" class="btn btn-primary restart-btn" aria-label="Start meditation game">Start Meditation</button>
+                </div>
+
+                <div id="gameOverOverlay" class="overlay overlay-danger is-hidden" aria-hidden="true">
+                  <h2>A Gentle Pause</h2>
+                  <p id="gameover-message">Your path rests here for now — breathe, then begin again.</p>
+                  <p>Final score: <strong id="final-score">0</strong></p>
+                  <p id="gameover-run-summary" class="run-summary"></p>
+                  <p id="record-message" class="record-message is-hidden">Your practice deepens — a beautiful new milestone!</p>
+                  <button type="button" id="btn-retry" class="btn btn-primary restart-btn" aria-label="Meditate again">Meditate Again</button>
+                </div>
+
+                <div id="surrenderOverlay" class="overlay overlay-surrender is-hidden" aria-hidden="true">
+                  <h2>A Moment of Rest</h2>
+                  <p id="surrender-message">You chose to rest — honor that choice with compassion.</p>
+                  <p>Final score: <strong id="surrender-score">0</strong></p>
+                  <p id="surrender-run-summary" class="run-summary"></p>
+                  <p id="surrender-record-message" class="record-message is-hidden">Your practice deepens — a beautiful new milestone!</p>
+                  <button type="button" id="btn-surrender-back" class="btn btn-secondary" aria-label="Return to start">Return</button>
+                  <button type="button" id="btn-surrender-restart" class="btn btn-primary restart-btn" aria-label="Start new run">Meditate Again</button>
+                </div>
+
+                <div id="overlay-layer" class="overlay overlay-layer is-hidden" aria-hidden="true">
+                  <h2 id="layer-transition-title">Ascending…</h2>
+                  <p id="layer-transition-desc"></p>
+                </div>
+
+                <div id="overlay-enlightenment" class="overlay overlay-layer overlay-enlightenment is-hidden" aria-hidden="true">
+                  <h2>Right Fruition — Chánh Quả</h2>
+                  <p>You have attained enlightenment. Drift through boundless space, meeting every thought with compassion.</p>
+                  <p class="overlay-note">When you feel ready, touch anywhere to rest in completion.</p>
+                </div>
+
+                <div id="victoryOverlay" class="overlay overlay-victory is-hidden" aria-hidden="true">
+                  <h2>Right Fruition — Chánh Quả</h2>
+                  <p class="overlay-note">May this peace extend to all beings — your practice brings light.</p>
+                  <p>Final score: <strong id="victory-score">0</strong></p>
+                  <p>Best score: <strong id="victory-best">0</strong></p>
+                  <p id="victory-run-summary" class="run-summary"></p>
+                  <p id="victory-record-message" class="record-message is-hidden">Your practice deepens — a beautiful new milestone!</p>
+                  <button type="button" id="meditateAgainBtn" class="btn btn-primary restart-btn" aria-label="Start new run">Meditate Again</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="touch-controls" class="touch-controls is-hidden" aria-hidden="true">
+              <div class="touch-zone touch-zone-move">
+                <div id="touch-dpad" class="touch-dpad touch-dpad--ground">
+                  <button type="button" id="touch-fly-up" class="touch-btn touch-btn-dir touch-dpad-vert is-hidden" aria-label="Move up" hidden>▲</button>
+                  <button type="button" id="touch-left" class="touch-btn touch-btn-dir" aria-label="Move left">◀</button>
+                  <button type="button" id="touch-right" class="touch-btn touch-btn-dir" aria-label="Move right">▶</button>
+                  <button type="button" id="touch-fly-down" class="touch-btn touch-btn-dir touch-dpad-vert is-hidden" aria-label="Move down" hidden>▼</button>
+                </div>
+                <div id="touch-joystick-mount" class="touch-joystick-mount is-hidden" aria-hidden="true">
+                  <div class="joystick-base" aria-hidden="true">
+                    <div class="joystick-stick"></div>
+                  </div>
+                  <span class="joystick-label">Move</span>
+                </div>
+              </div>
+              <div class="touch-zone touch-zone-actions">
+                <button type="button" id="touch-shockwave" class="touch-btn touch-btn-shockwave" aria-label="Pulse">Pulse</button>
+                <button type="button" id="touch-jump" class="touch-btn touch-btn-jump" aria-label="Jump">Jump</button>
+                <button type="button" id="touch-down" class="touch-btn touch-btn-down touch-btn-layer-fly is-hidden" aria-label="Move down" hidden>Down</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="layer-name" id="layer-name">Layer 1: Earth Ground</p>
+        <p id="controls-hint" class="controls-hint">Golden = shield + Mindfulness · Layer 2+ four-way flight · 3 gentle reminders invite a pause</p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Breathe. Focus. Ascend.</p>
+    </footer>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
