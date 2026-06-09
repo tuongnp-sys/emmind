@@ -27,6 +27,8 @@ Open http://localhost:5180 — enter a name, play. Scores save on this device (l
 
 Both hosts serve the standalone itch build (no portal SDK required for basic play).
 
+> **Vercel:** Dùng project `emmind` đã có — **đừng Import New Project** (sẽ báo trùng tên). Repo GitHub `tuongnp-sys/emmind` đã được nối; mỗi push `main` tự deploy.
+
 ### Portal simulation
 
 - `?platform=local` — default, no SDK
