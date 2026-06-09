@@ -4,13 +4,14 @@
 export class TouchJoystick {
   /**
    * @param {HTMLElement} mountEl — contains .joystick-base and .joystick-stick
-   * @param {{ onChange?: (dx: number, dy: number) => void }} options
+   * @param {{ onChange?: (dx: number, dy: number) => void, lockAxis?: 'x' | 'y' | null }} options
    */
   constructor(mountEl, options = {}) {
     this.mount = mountEl;
     this.base = mountEl?.querySelector('.joystick-base');
     this.stick = mountEl?.querySelector('.joystick-stick');
     this.onChange = options.onChange ?? (() => {});
+    this.lockAxis = options.lockAxis ?? null;
     this.pointerId = null;
     this.dx = 0;
     this.dy = 0;
@@ -26,6 +27,14 @@ export class TouchJoystick {
     this.base.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.base.addEventListener('pointerup', (e) => this.onPointerUp(e));
     this.base.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+  }
+
+  setLockAxis(axis) {
+    this.lockAxis = axis ?? null;
+    if (this.pointerId !== null) {
+      return;
+    }
+    this.resetStick();
   }
 
   onPointerDown(e) {
@@ -58,6 +67,13 @@ export class TouchJoystick {
 
     let ox = e.clientX - cx;
     let oy = e.clientY - cy;
+
+    if (this.lockAxis === 'x') {
+      oy = 0;
+    } else if (this.lockAxis === 'y') {
+      ox = 0;
+    }
+
     const dist = Math.hypot(ox, oy);
     if (dist > maxR && dist > 0) {
       ox = (ox / dist) * maxR;
@@ -72,6 +88,12 @@ export class TouchJoystick {
     if (len < this.deadZone) {
       this.dx = 0;
       this.dy = 0;
+    } else if (this.lockAxis === 'x') {
+      this.dx = nx;
+      this.dy = 0;
+    } else if (this.lockAxis === 'y') {
+      this.dx = 0;
+      this.dy = ny;
     } else {
       this.dx = nx / len;
       this.dy = ny / len;

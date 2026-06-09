@@ -81,7 +81,7 @@ const MOBILE_OBSTACLE_SPEED_FACTOR = 0.9;
 const MOBILE_HURTBOX_INSET = 3;
 /** Matches portrait phones and landscape phones (wide but short viewport). */
 const MOBILE_VIEWPORT_MQ =
-  '(max-width: 767px), (max-height: 520px) and (max-width: 1100px) and (pointer: coarse)';
+  '(max-width: 768px), (max-height: 520px) and (max-width: 1100px) and (pointer: coarse)';
 const MOBILE_OVERLAY_MQ = '(max-width: 768px)';
 const DEFAULT_ENERGY_MAX = 5;
 const HIT_FLASH_DURATION = 0.15;
@@ -406,9 +406,15 @@ function syncMobilePlayChrome(playingVisible) {
   document.body.classList.toggle('game-mobile-play', compact);
 
   if (gameSessionBar) {
-    gameSessionBar.classList.add('is-hidden');
-    gameSessionBar.setAttribute('aria-hidden', 'true');
+    if (compact) {
+      gameSessionBar.classList.remove('is-hidden');
+      gameSessionBar.setAttribute('aria-hidden', 'false');
+    } else {
+      gameSessionBar.classList.add('is-hidden');
+      gameSessionBar.setAttribute('aria-hidden', 'true');
+    }
   }
+  syncPauseButtons();
 }
 
 function isMobileOverlayViewport() {
@@ -552,25 +558,43 @@ function hasActiveTouchMovement() {
   return activePointerHolds.size > 0 || touchMoveVector.x !== 0 || touchMoveVector.y !== 0;
 }
 
+function resetTouchInputForModeChange() {
+  mobileJoystick?.release();
+  activePointerHolds.clear();
+  clearTouchMovementKeys(true);
+}
+
 function syncTouchLayout() {
   const inEnlightenment = isEnlightenment();
   const freeMove = !inEnlightenment && currentLayer >= 2;
+  const groundMove = !inEnlightenment && currentLayer < 2;
 
-  if (touchDpad) {
-    const showDpad = !inEnlightenment;
-    touchDpad.classList.toggle('is-hidden', !showDpad);
-    touchDpad.hidden = !showDpad;
-    if (showDpad) {
-      touchDpad.classList.toggle('touch-dpad--ground', !freeMove);
-      touchDpad.classList.toggle('touch-dpad--fly', freeMove);
+  if (touchJoystickMount) {
+    const showJoystick = groundMove;
+    touchJoystickMount.classList.toggle('is-hidden', !showJoystick);
+    touchJoystickMount.hidden = !showJoystick;
+    touchJoystickMount.setAttribute('aria-hidden', showJoystick ? 'false' : 'true');
+    if (!showJoystick) {
+      mobileJoystick?.release();
+    } else {
+      mobileJoystick?.setLockAxis('x');
     }
   }
 
-  if (touchJoystickMount) {
-    touchJoystickMount.classList.add('is-hidden');
-    touchJoystickMount.hidden = true;
-    touchJoystickMount.setAttribute('aria-hidden', 'true');
-    mobileJoystick?.release();
+  if (touchDpad) {
+    const showDpad = freeMove;
+    touchDpad.classList.toggle('is-hidden', !showDpad);
+    touchDpad.hidden = !showDpad;
+    if (showDpad) {
+      touchDpad.classList.remove('touch-dpad--ground');
+      touchDpad.classList.add('touch-dpad--fly');
+    }
+  }
+
+  for (const el of [touchLeft, touchRight]) {
+    if (!el) continue;
+    el.classList.add('is-hidden');
+    el.hidden = true;
   }
 
   const showVert = freeMove;
@@ -593,20 +617,6 @@ function syncTouchLayout() {
     touchDown.classList.add('is-hidden');
     touchDown.hidden = true;
   }
-
-  if (inEnlightenment || !freeMove) {
-    touchMoveVector.x = 0;
-    touchMoveVector.y = 0;
-    setUp(false);
-    setDown(false);
-    setLeft(false);
-    setRight(false);
-    if (touchFlyUp) activePointerHolds.delete(touchFlyUp);
-    if (touchFlyDown) activePointerHolds.delete(touchFlyDown);
-    if (!hasActiveTouchMovement()) {
-      clearTouchMovementKeys(true);
-    }
-  }
 }
 
 function setTouchMoveVector(dx, dy) {
@@ -618,7 +628,13 @@ function getPlayerMoveOptions() {
   if (isEnlightenment()) {
     return { cosmicDrift: true };
   }
-  if (currentLayer < 2) return { freeMove: false };
+  if (currentLayer < 2) {
+    const opts = { freeMove: false };
+    if (touchMoveVector.x !== 0) {
+      opts.groundMoveX = touchMoveVector.x;
+    }
+    return opts;
+  }
 
   let moveVector = null;
   if (touchMoveVector.x !== 0 || touchMoveVector.y !== 0) {
@@ -894,8 +910,9 @@ function scheduleResizeCanvas() {
   resizeDebounceTimer = setTimeout(() => {
     resizeDebounceTimer = null;
     resizeCanvas();
-    if (isPlaying()) syncTouchControls(true);
-    else syncTouchControls(false);
+    if (!isPlaying()) {
+      syncTouchControls(false);
+    }
   }, 150);
 }
 
@@ -1484,6 +1501,7 @@ function enterPlayingMode(token) {
   updateDomHud();
   startGameLoop();
   playLayerMusic(currentLayer);
+  resetTouchInputForModeChange();
   syncTouchLayout();
   gameplayStart();
 }
@@ -1811,6 +1829,7 @@ function startEnlightenmentPhase() {
     'Right fruition attained. Drift freely through cosmic space — when ready, touch anywhere to complete your session.'
   );
   updateDomHud();
+  resetTouchInputForModeChange();
   syncTouchLayout();
 }
 
@@ -1820,6 +1839,7 @@ function finishEnlightenmentIntro() {
   hideOverlay(overlayEnlightenment);
   setGameState(GameState.ENLIGHTENMENT);
   syncGameplayChrome();
+  resetTouchInputForModeChange();
   showGameControls(true);
   syncTouchControls(true);
   bindEnlightenmentClick();
@@ -1870,6 +1890,7 @@ function showLayerTransition(layer, descending = false) {
   layerTransitionTimer = LAYER_TRANSITION_DURATION;
   if (background) background.setAscentBorderPulse(0);
   updateDomHud();
+  resetTouchInputForModeChange();
   syncTouchLayout();
   announceGame(`${layerTitle}. ${transitionText}`);
 }
@@ -2248,8 +2269,12 @@ function bindTouchControls() {
   if (touchJoystickMount) {
     mobileJoystick = new TouchJoystick(touchJoystickMount, {
       onChange: (dx, dy) => {
-        if (!isPlaying() || isPaused || currentLayer < 2) return;
-        setTouchMoveVector(dx, dy);
+        if (!isPlaying() || isPaused || isEnlightenment()) return;
+        if (currentLayer < 2) {
+          setTouchMoveVector(dx, 0);
+        } else {
+          setTouchMoveVector(dx, dy);
+        }
       },
     });
   }
@@ -2314,7 +2339,7 @@ window.addEventListener('orientationchange', () => {
     syncLeaderboardPanelOpen();
     if (isPlaying()) {
       showGameControls(true);
-      syncTouchControls(true);
+      syncTouchLayout();
       syncPauseButtons();
     }
     remeasurePlayChromeAfterLayout();
@@ -2324,7 +2349,6 @@ window.addEventListener('orientationchange', () => {
 });
 window.visualViewport?.addEventListener('resize', scheduleResizeCanvas);
 window.visualViewport?.addEventListener('resize', scheduleSyncGameViewport);
-window.visualViewport?.addEventListener('scroll', scheduleSyncGameViewport);
 
 const GAME_SCROLL_KEYS = new Set([
   'ArrowUp',

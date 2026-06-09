@@ -205,9 +205,14 @@ export class Player {
       this._clampToBounds();
     } else {
       let dx = 0;
-      if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
-      if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
-      if (dx !== 0) dx /= Math.abs(dx);
+      const analogX = options.groundMoveX;
+      if (typeof analogX === 'number' && Math.abs(analogX) > 0.05) {
+        dx = analogX;
+      } else {
+        if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
+        if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
+        if (dx !== 0) dx /= Math.abs(dx);
+      }
 
       this.x += dx * this.speed * dt;
       this.velocityY += this.gravity * dt;

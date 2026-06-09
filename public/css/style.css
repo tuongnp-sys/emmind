@@ -1618,6 +1618,11 @@ body.game-mobile-play .touch-controls.is-visible {
     border-color: rgba(126, 184, 154, 0.24);
   }
 
+  body.game-mobile-play .game-session-bar:not(.is-hidden) .game-session-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
   body.game-mobile-play .touch-controls.is-visible {
     position: absolute;
     left: 0.45rem;
