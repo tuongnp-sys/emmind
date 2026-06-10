@@ -132,18 +132,102 @@ function ensureContext() {
   sfxGain.gain.value = 1;
   sfxGain.connect(masterGain);
 
-  audioCtx.addEventListener?.('statechange', () => {
+  const ctxRef = audioCtx;
+  ctxRef.addEventListener?.('statechange', () => {
+    if (audioCtx !== ctxRef) return;
     // iOS sets 'interrupted' (notification/call); try to come back automatically.
-    if (audioCtx.state !== 'running') tryResumeContext();
+    if (ctxRef.state !== 'running') {
+      saveMusicPosition();
+      tryResumeContext();
+    }
   });
 
   return audioCtx;
 }
 
+/** Snapshot the music position so a context rebuild resumes where it left off. */
+function saveMusicPosition() {
+  if (!audioCtx || !musicState.source || !musicState.buffer) return;
+  musicState.offset = getMusicPosition();
+  musicState.startedAt = audioCtx.currentTime;
+}
+
+let resumeFailStreak = 0;
+
 function tryResumeContext() {
   if (!audioCtx || audioCtx.state === 'running') return;
   const p = audioCtx.resume();
-  p?.then?.(() => restartMusicIfDropped()).catch(() => {});
+  p?.then?.(() => {
+    resumeFailStreak = 0;
+    restartMusicIfDropped();
+  }).catch(() => {
+    // iOS sometimes refuses to ever resume a context after an interruption —
+    // after repeated failures the only reliable fix is a brand-new context.
+    resumeFailStreak += 1;
+    if (resumeFailStreak >= 2) {
+      resumeFailStreak = 0;
+      recreateAudioContext();
+    }
+  });
+}
+
+/**
+ * WebKit "zombie context" bug: after an audio-session interruption the
+ * context can report state === 'running' while being permanently silent
+ * (currentTime frozen). resume() resolves but does nothing. The only
+ * recovery is closing the context and rebuilding the graph from scratch.
+ * Decoded AudioBuffers survive — they are not tied to a context.
+ */
+function recreateAudioContext() {
+  if (!audioCtx) return;
+
+  saveMusicPosition();
+  const savedLayer = musicState.layerId;
+  const wasPlaying = musicIntendedPlaying;
+
+  clearStinger();
+  for (const voice of [...gameplayVoices]) {
+    finishVoiceNodes(voice);
+    releaseVoice(voice.id);
+  }
+  gameplayVoices.length = 0;
+  activeVoiceIds.clear();
+  stopCurrentMusicSource();
+
+  const old = audioCtx;
+  audioCtx = null;
+  masterGain = null;
+  musicGain = null;
+  sfxGain = null;
+  try {
+    old.close?.()?.catch?.(() => {});
+  } catch { /* ignore */ }
+
+  if (!ensureContext()) return;
+  // Keep musicState.trackKey/buffer/offset so playLayerMusic resumes in place.
+  if (wasPlaying && savedLayer != null) {
+    playLayerMusic(savedLayer, false);
+  }
+}
+
+let zombieCheckPending = false;
+
+/**
+ * Detect a zombie context: while 'running', currentTime must advance.
+ * If it is frozen after ~300ms, rebuild the context.
+ */
+function scheduleZombieCheck() {
+  if (!audioCtx || audioCtx.state !== 'running' || zombieCheckPending) return;
+  zombieCheckPending = true;
+  const ctxRef = audioCtx;
+  const t0 = ctxRef.currentTime;
+  window.setTimeout(() => {
+    zombieCheckPending = false;
+    if (audioCtx !== ctxRef) return;
+    if (ctxRef.state === 'running' && ctxRef.currentTime === t0) {
+      recreateAudioContext();
+    }
+  }, 300);
 }
 
 /** If music was supposed to play but its source got dropped, restart at saved offset. */
@@ -430,8 +514,23 @@ function buildSilentWavUrl(seconds = 20) {
 }
 
 /**
+ * Safari 16.4+: the official way to keep WebAudio audible with the
+ * ring/silent switch on. Replaces the silent-loop hack entirely.
+ */
+function promotePlaybackSession() {
+  try {
+    if (navigator.audioSession) {
+      navigator.audioSession.type = 'playback';
+      return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
+/**
  * Looping silent HTMLAudio promotes the iOS audio session to "playback" so
  * WebAudio stays audible even with the ring/silent switch on (unmute.js trick).
+ * Fallback only — the HTMLAudio hack can interfere with the hardware session.
  */
 function startSilenceKeeper() {
   if (silenceKeeper) {
@@ -455,6 +554,7 @@ export function unlockAudio() {
   if (!ctx) return;
 
   tryResumeContext();
+  scheduleZombieCheck();
 
   if (audioUnlocked) return;
   audioUnlocked = true;
@@ -467,7 +567,9 @@ export function unlockAudio() {
     source.start(0);
   } catch { /* ignore */ }
 
-  startSilenceKeeper();
+  if (!promotePlaybackSession()) {
+    startSilenceKeeper();
+  }
 }
 
 let watchdogsBound = false;
@@ -479,6 +581,7 @@ function bindRecoveryWatchdogs() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     tryResumeContext();
+    scheduleZombieCheck();
     if (silenceKeeper?.paused && audioUnlocked) {
       silenceKeeper.play()?.catch?.(() => {});
     }
@@ -491,6 +594,7 @@ function bindRecoveryWatchdogs() {
     () => {
       if (!audioCtx) return;
       if (audioCtx.state !== 'running') tryResumeContext();
+      scheduleZombieCheck();
       if (silenceKeeper?.paused && audioUnlocked) {
         silenceKeeper.play()?.catch?.(() => {});
       }

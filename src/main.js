@@ -273,10 +273,11 @@ const TOUCH_INPUT_ATTACK = 60;
 const TOUCH_INPUT_RELEASE = 20;
 /** Adaptive resolution: step the mobile DPR cap down when frames stay slow. */
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
-// Android GPUs (Mali/Adreno low-end) need a lower starting point than Apple's.
-const ADAPTIVE_DPR_STEPS = IS_ANDROID ? [1.5, 1.25, 1] : [2, 1.5, 1.25];
+// Android GPUs (Mali/Adreno low-end) need a lower starting point than Apple's:
+// starting at 1.5 meant the first minutes always lagged before adaptive kicked in.
+const ADAPTIVE_DPR_STEPS = IS_ANDROID ? [1.25, 1] : [2, 1.5, 1.25];
 const ADAPTIVE_SLOW_FRAME_SEC = 0.0195;
-const ADAPTIVE_SLOW_FRAME_TRIGGER = 30;
+const ADAPTIVE_SLOW_FRAME_TRIGGER = 20;
 let adaptiveDprStep = 0;
 let adaptiveSlowFrames = 0;
 let fpsEma = 0;
