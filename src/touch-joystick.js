@@ -1,3 +1,6 @@
+/** Deflection ratio at which output saturates to full speed (60% pull = 100% speed). */
+const SATURATION = 0.6;
+
 /**
  * Simple virtual joystick for mobile — maps stick deflection to movement keys.
  */
@@ -22,6 +25,9 @@ export class TouchJoystick {
 
     this.mount.style.touchAction = 'none';
     this.base.style.touchAction = 'none';
+
+    // iOS: block long-press text selection / callout at the source.
+    this.base.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
     this.base.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.base.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -89,14 +95,15 @@ export class TouchJoystick {
       this.dx = 0;
       this.dy = 0;
     } else if (this.lockAxis === 'x') {
-      this.dx = nx;
+      this.dx = Math.sign(nx) * Math.min(1, Math.abs(nx) / SATURATION);
       this.dy = 0;
     } else if (this.lockAxis === 'y') {
       this.dx = 0;
-      this.dy = ny;
+      this.dy = Math.sign(ny) * Math.min(1, Math.abs(ny) / SATURATION);
     } else {
-      this.dx = nx / len;
-      this.dy = ny / len;
+      const mag = Math.min(1, len / SATURATION);
+      this.dx = (nx / len) * mag;
+      this.dy = (ny / len) * mag;
     }
     this.onChange(this.dx, this.dy);
   }

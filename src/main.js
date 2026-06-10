@@ -22,6 +22,7 @@ import {
 } from './obstacle.js';
 import {
   preloadAudioAssets,
+  unlockAudio,
   playSfx,
   playLayerMusic,
   playLayerAscendStinger,
@@ -253,7 +254,9 @@ let viewportSyncTimer = null;
 /** @type {Set<HTMLElement>} */
 const activePointerHolds = new Set();
 /** Mobile: lerp rate for joystick input smoothing (higher = snappier). */
-const TOUCH_INPUT_SMOOTH = 14;
+const TOUCH_INPUT_SMOOTH = 22;
+/** Mobile: ground-run speed boost so joystick movement feels responsive. */
+const MOBILE_GROUND_SPEED_FACTOR = 1.15;
 /** Normalized analog from joystick when enabled (-1..1). */
 const touchMoveVector = { x: 0, y: 0 };
 /** Smoothed joystick vector fed to player movement. */
@@ -637,7 +640,7 @@ function getPlayerMoveOptions() {
   if (currentLayer < 2) {
     const opts = { freeMove: false };
     if (touchMoveVectorSmoothed.x !== 0) {
-      opts.groundMoveX = touchMoveVectorSmoothed.x;
+      opts.groundMoveX = touchMoveVectorSmoothed.x * MOBILE_GROUND_SPEED_FACTOR;
     }
     return opts;
   }
@@ -892,7 +895,9 @@ function resizeCanvas() {
     canvasWrap.style.height = `${cssHeight}px`;
   }
 
-  const dpr = window.devicePixelRatio || 1;
+  // Cap DPR on mobile: DPR 3 backing stores tank fps on low-end GPUs (visible as jitter).
+  const rawDpr = window.devicePixelRatio || 1;
+  const dpr = isMobileViewport() ? Math.min(rawDpr, 2) : rawDpr;
   const scaleX = cssWidth / CANVAS_REF_WIDTH;
   const scaleY = cssHeight / CANVAS_REF_HEIGHT;
 
@@ -1506,6 +1511,7 @@ function enterPlayingMode(token) {
   stopEnergyCountdown();
   updateDomHud();
   startGameLoop();
+  unlockAudio();
   playLayerMusic(currentLayer);
   resetTouchInputForModeChange();
   syncTouchLayout();
@@ -2338,6 +2344,9 @@ function bindTouchControls() {
   };
   touchShockwave?.addEventListener('pointerup', onPulsePointerUp);
 }
+
+window.addEventListener('pointerdown', () => unlockAudio(), { once: true, capture: true });
+window.addEventListener('keydown', () => unlockAudio(), { once: true, capture: true });
 
 window.addEventListener('resize', scheduleResizeCanvas);
 window.addEventListener('resize', syncLeaderboardPanelOpen);

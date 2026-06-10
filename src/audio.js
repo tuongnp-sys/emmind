@@ -35,6 +35,18 @@ const unavailableSfx = new Set();
 /** @type {Map<string, number>} */
 const sfxLastPlayedAt = new Map();
 
+/** Reusable elements per SFX name — iOS only allows play() on gesture-unlocked elements. */
+const SFX_ELEMENTS_PER_NAME = 2;
+/** @type {Map<string, HTMLAudioElement[]>} */
+const sfxCache = new Map();
+
+let audioUnlocked = false;
+/** True while layer music is supposed to be audible (not user-paused/stopped). */
+let musicIntendedPlaying = false;
+/** @type {{ layerId: number, fadeIn: boolean } | null} */
+let pendingMusicRetry = null;
+let visibilityResumeBound = false;
+
 /** @type {Map<string, HTMLAudioElement>} */
 const musicCache = new Map();
 const unavailableMusic = new Set();
@@ -199,16 +211,14 @@ function playStinger(name, profile) {
   clearStinger();
 
   const voiceId = nextVoiceId++;
-  const audio = new Audio(createSfxUrl(name));
-  audio.preload = 'auto';
+  const audio = acquireSfxElement(name);
   audio.volume = profile.volume;
+  try {
+    audio.currentTime = 0;
+  } catch { /* ignore */ }
 
   const onFinish = () => finishStinger(voiceId);
   audio.addEventListener('ended', onFinish, { once: true });
-  audio.addEventListener('error', () => {
-    markUnavailableSfx(name);
-    finishStinger(voiceId);
-  }, { once: true });
 
   const maxTimer = window.setTimeout(onFinish, profile.maxMs);
 
@@ -245,9 +255,11 @@ function playGameplayVoice(name, profile) {
   acquireGameplayVoice();
 
   const voiceId = nextVoiceId++;
-  const audio = new Audio(createSfxUrl(name));
-  audio.preload = 'auto';
+  const audio = acquireSfxElement(name);
   audio.volume = profile.volume;
+  try {
+    audio.currentTime = 0;
+  } catch { /* ignore */ }
 
   const onFinish = () => {
     const idx = gameplayVoices.findIndex((v) => v.id === voiceId);
@@ -262,10 +274,6 @@ function playGameplayVoice(name, profile) {
   };
 
   audio.addEventListener('ended', onFinish, { once: true });
-  audio.addEventListener('error', () => {
-    markUnavailableSfx(name);
-    onFinish();
-  }, { once: true });
 
   const maxTimer = window.setTimeout(onFinish, profile.maxMs);
   gameplayVoices.push({ id: voiceId, audio, startedAt: performance.now(), maxTimer, endedHandler: onFinish });
@@ -287,16 +295,36 @@ function shouldThrottleSfx(name, profile) {
   return performance.now() - last < profile.throttleMs;
 }
 
-function preloadSfxProbe(name) {
-  if (unavailableSfx.has(name)) return;
-  const probe = new Audio(createSfxUrl(name));
-  probe.preload = 'auto';
-  probe.addEventListener('error', () => markUnavailableSfx(name), { once: true });
+function createSfxElement(name) {
+  const audio = new Audio(createSfxUrl(name));
+  audio.preload = 'auto';
+  audio.addEventListener('error', () => markUnavailableSfx(name), { once: true });
   try {
-    probe.load();
+    audio.load();
   } catch {
     markUnavailableSfx(name);
   }
+  return audio;
+}
+
+function ensureSfxCache(name) {
+  let pool = sfxCache.get(name);
+  if (!pool) {
+    pool = [];
+    for (let i = 0; i < SFX_ELEMENTS_PER_NAME; i++) {
+      pool.push(createSfxElement(name));
+    }
+    sfxCache.set(name, pool);
+  }
+  return pool;
+}
+
+function acquireSfxElement(name) {
+  const pool = ensureSfxCache(name);
+  for (const el of pool) {
+    if (el.paused || el.ended) return el;
+  }
+  return pool[0];
 }
 
 function preloadMusic(trackKey) {
@@ -317,10 +345,68 @@ function preloadMusic(trackKey) {
   }
 }
 
+function bindVisibilityResume() {
+  if (visibilityResumeBound) return;
+  visibilityResumeBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!musicIntendedPlaying) return;
+    const audio = getCurrentMusicAudio();
+    if (audio && audio.paused) {
+      const p = audio.play();
+      p?.catch?.(() => {});
+    }
+  });
+}
+
+/**
+ * Prime every audio element inside a user gesture so later programmatic
+ * play() calls (layer-up setTimeout, SFX) work on iOS Safari. Idempotent.
+ */
+export function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+
+  /** @type {HTMLAudioElement[]} */
+  const targets = [];
+  for (let i = 1; i <= 7; i++) {
+    const el = getOrCreateMusic(`layer-${i}`);
+    if (el) targets.push(el);
+  }
+  const fallback = getOrCreateMusic('music');
+  if (fallback) targets.push(fallback);
+  for (const name of KNOWN_SFX) {
+    if (unavailableSfx.has(name)) continue;
+    targets.push(...ensureSfxCache(name));
+  }
+
+  for (const el of targets) {
+    if (el === getCurrentMusicAudio() && !el.paused) continue;
+    const prevMuted = el.muted;
+    el.muted = true;
+    const settle = () => {
+      el.muted = prevMuted;
+      if (el === getCurrentMusicAudio() && musicIntendedPlaying) return;
+      try {
+        el.pause();
+        el.currentTime = 0;
+      } catch { /* ignore */ }
+    };
+    try {
+      const p = el.play();
+      if (p?.then) p.then(settle).catch(() => { el.muted = prevMuted; });
+      else settle();
+    } catch {
+      el.muted = prevMuted;
+    }
+  }
+}
+
 export function initAudio() {
-  for (const name of KNOWN_SFX) preloadSfxProbe(name);
+  for (const name of KNOWN_SFX) ensureSfxCache(name);
   for (let i = 1; i <= 7; i++) preloadMusic(`layer-${i}`);
   preloadMusic('music');
+  bindVisibilityResume();
 }
 
 export function preloadAudioAssets(timeoutMs = 600) {
@@ -444,6 +530,8 @@ export function playLayerMusic(layerId, fadeIn = true) {
 
   currentMusicLayer = trackKey;
   musicTargetVolume = MUSIC_VOLUME;
+  musicIntendedPlaying = true;
+  pendingMusicRetry = null;
 
   if (activeVoiceIds.size === 0 && !activeStinger) {
     musicDucked = false;
@@ -472,11 +560,36 @@ export function playLayerMusic(layerId, fadeIn = true) {
     }
   };
 
-  if (p?.then) p.then(onPlaying).catch(() => {});
-  else onPlaying();
+  if (p?.then) {
+    p.then(onPlaying).catch(() => {
+      if (epoch !== musicEpoch) return;
+      scheduleMusicRetry(layerId, fadeIn);
+    });
+  } else {
+    onPlaying();
+  }
+}
+
+/** Autoplay was blocked (iOS) — replay on the next user gesture. */
+function scheduleMusicRetry(layerId, fadeIn) {
+  if (pendingMusicRetry) {
+    pendingMusicRetry = { layerId, fadeIn };
+    return;
+  }
+  pendingMusicRetry = { layerId, fadeIn };
+  const handler = () => {
+    const req = pendingMusicRetry;
+    pendingMusicRetry = null;
+    if (!req || !musicIntendedPlaying) return;
+    if (currentMusicLayer !== getMusicForLayer(req.layerId)) return;
+    playLayerMusic(req.layerId, req.fadeIn);
+  };
+  window.addEventListener('pointerdown', handler, { once: true, capture: true });
 }
 
 export function pauseLayerMusic() {
+  musicIntendedPlaying = false;
+  pendingMusicRetry = null;
   if (musicFadeRaf) {
     cancelAnimationFrame(musicFadeRaf);
     musicFadeRaf = null;
@@ -495,6 +608,8 @@ export function resumeLayerMusic(layerId) {
 
 export function stopLayerMusic() {
   musicEpoch += 1;
+  musicIntendedPlaying = false;
+  pendingMusicRetry = null;
   if (layerAscendMusicTimer) {
     window.clearTimeout(layerAscendMusicTimer);
     layerAscendMusicTimer = null;

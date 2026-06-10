@@ -1078,6 +1078,18 @@ body.game-mobile-play .touch-controls.is-visible {
   flex-shrink: 0;
 }
 
+/* iOS: no long-press text selection / callout in the play area (blue caret bug). */
+.game-play-stack,
+.touch-controls,
+.touch-joystick-mount,
+.joystick-label,
+.game-stats-bar,
+.game-session-bar {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .touch-controls {
   display: none;
   flex-direction: row;
@@ -1544,6 +1556,7 @@ body.game-mobile-play .touch-controls.is-visible {
   body.game-mobile-play {
     background: #1a2332;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body.game-mobile-play .app {
@@ -1603,8 +1616,8 @@ body.game-mobile-play .touch-controls.is-visible {
     flex-shrink: 0;
     z-index: 24;
     margin: 0.35rem 0.45rem 0;
-    background: linear-gradient(135deg, rgba(18, 28, 36, 0.84), rgba(24, 34, 44, 0.8));
-    backdrop-filter: blur(5px);
+    /* No backdrop-filter: blur over canvas costs too much on low-end Android GPUs. */
+    background: linear-gradient(135deg, rgba(18, 28, 36, 0.94), rgba(24, 34, 44, 0.92));
     border-color: rgba(126, 184, 154, 0.26);
   }
 
@@ -1613,8 +1626,7 @@ body.game-mobile-play .touch-controls.is-visible {
     flex-shrink: 0;
     z-index: 24;
     margin: 0.2rem 0.45rem 0;
-    background: linear-gradient(135deg, rgba(18, 26, 34, 0.84), rgba(24, 34, 44, 0.8));
-    backdrop-filter: blur(5px);
+    background: linear-gradient(135deg, rgba(18, 26, 34, 0.94), rgba(24, 34, 44, 0.92));
     border-color: rgba(126, 184, 154, 0.24);
   }
 
