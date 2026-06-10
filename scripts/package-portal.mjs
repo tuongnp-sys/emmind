@@ -34,11 +34,11 @@ fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
 if (process.platform === 'win32') {
   if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
-  const distWin = dist.replace(/\//g, '\\');
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path '${distWin}\\*' -DestinationPath '${outPath.replace(/'/g, "''")}' -Force"`,
-    { stdio: 'inherit' }
-  );
+  // NOTE: Compress-Archive (and .NET Framework ZipFile) write backslash entry
+  // paths, which breaks extraction on the Linux servers of itch/Poki/CrazyGames
+  // (assets end up as literal "assets\foo.js" files → blank game). Windows'
+  // built-in bsdtar writes spec-compliant forward slashes; it also expands *.
+  execSync(`tar -a -cf "${outPath}" *`, { cwd: dist, stdio: 'inherit' });
 } else {
   execSync(`zip -r "${outPath}" .`, { cwd: dist, stdio: 'inherit' });
 }
