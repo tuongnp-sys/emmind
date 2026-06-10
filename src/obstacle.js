@@ -6,6 +6,34 @@ import {
   MOVEMENT_HORIZONTAL,
   MOVEMENT_COMBINED,
 } from './background.js';
+import { makeRadialSprite } from './render-cache.js';
+
+// Pre-baked glow sprites — radial gradients are scale-invariant, so one sprite
+// per color serves every size via drawImage scaling.
+/** @type {Map<string, HTMLCanvasElement>} */
+const blackHoleSprites = new Map();
+let scriptureGlowSprite = null;
+
+function getBlackHoleSprite(fillColor) {
+  let sprite = blackHoleSprites.get(fillColor);
+  if (!sprite) {
+    sprite = makeRadialSprite(96, [
+      [0, '#180818'],
+      [0.6, fillColor],
+      [1, 'transparent'],
+    ]);
+    blackHoleSprites.set(fillColor, sprite);
+  }
+  return sprite;
+}
+
+function getScriptureGlowSprite() {
+  return (scriptureGlowSprite ??= makeRadialSprite(96, [
+    [0, 'rgba(255, 235, 80, 0.7)'],
+    [0.5, 'rgba(255, 220, 60, 0.35)'],
+    [1, 'transparent'],
+  ]));
+}
 
 /** Base fall speed — Layer 1 vertical reference. */
 const BASE_VERTICAL_SPEED = 100;
@@ -313,14 +341,8 @@ export class Temptation {
   }
 
   _drawBlackHole(ctx) {
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width / 2);
-    g.addColorStop(0, '#180818');
-    g.addColorStop(0.6, this.fillColor);
-    g.addColorStop(1, 'transparent');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
-    ctx.fill();
+    const r = this.width / 2;
+    ctx.drawImage(getBlackHoleSprite(this.fillColor), -r, -r, r * 2, r * 2);
   }
 
   _drawComet(ctx) {
@@ -386,14 +408,9 @@ export class HolyScripture {
     const cy = this.y + this.height / 2 + this.bobOffset;
     const pulse = 0.6 + Math.sin(this.glowPhase) * 0.3;
 
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 32);
-    glow.addColorStop(0, `rgba(255,235,80,${0.7 * pulse})`);
-    glow.addColorStop(0.5, `rgba(255,220,60,${0.35 * pulse})`);
-    glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = Math.min(1, Math.max(0, pulse));
+    ctx.drawImage(getScriptureGlowSprite(), cx - 32, cy - 32, 64, 64);
+    ctx.globalAlpha = 1;
 
     ctx.fillStyle = '#FFE566';
     ctx.strokeStyle = '#FFF9C0';

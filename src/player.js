@@ -1,3 +1,35 @@
+import { makeRadialSprite } from './render-cache.js';
+
+// Glow sprites baked once — per-frame createRadialGradient is slow on mobile GPUs.
+let auraSprite = null;
+let enlightenSprite = null;
+let shockwaveSprite = null;
+
+function getAuraSprite() {
+  return (auraSprite ??= makeRadialSprite(128, [
+    [0, 'rgba(255, 250, 180, 0.65)'],
+    [0.45, 'rgba(255, 220, 80, 0.35)'],
+    [1, 'transparent'],
+  ]));
+}
+
+function getEnlightenSprite() {
+  return (enlightenSprite ??= makeRadialSprite(192, [
+    [0, 'rgba(255, 252, 230, 0.7)'],
+    [0.3, 'rgba(255, 235, 150, 0.45)'],
+    [0.65, 'rgba(255, 210, 90, 0.2)'],
+    [1, 'transparent'],
+  ]));
+}
+
+function getShockwaveSprite() {
+  return (shockwaveSprite ??= makeRadialSprite(192, [
+    [0, 'rgba(212, 184, 150, 0.35)'],
+    [0.5, 'rgba(126, 184, 154, 0.25)'],
+    [1, 'transparent'],
+  ]));
+}
+
 export class Player {
   constructor(canvas) {
     this.canvas = canvas;
@@ -256,14 +288,9 @@ export class Player {
       const pulse = 0.75 + Math.sin(performance.now() * 0.008) * 0.25;
       const chargeScale = this.protectiveCharges / 2;
       const r = 28 + chargeScale * 22 * pulse;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(255, 250, 180, ${0.65 * pulse})`);
-      g.addColorStop(0.45, `rgba(255, 220, 80, ${0.35 * chargeScale})`);
-      g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = Math.min(1, pulse);
+      ctx.drawImage(getAuraSprite(), cx - r, cy - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
 
       ctx.strokeStyle = `rgba(255, 245, 200, ${0.7 * pulse})`;
       ctx.lineWidth = 2 + chargeScale;
@@ -281,15 +308,9 @@ export class Player {
     if (this.enlightenment > 0) {
       const pulse = 0.75 + Math.sin(performance.now() * 0.003) * 0.25;
       const r = 55 + this.enlightenment * 95 * pulse;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(255, 252, 230, ${0.7 * this.enlightenment})`);
-      g.addColorStop(0.3, `rgba(255, 235, 150, ${0.45 * this.enlightenment})`);
-      g.addColorStop(0.65, `rgba(255, 210, 90, ${0.2 * this.enlightenment})`);
-      g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = Math.min(1, this.enlightenment);
+      ctx.drawImage(getEnlightenSprite(), cx - r, cy - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
 
       ctx.strokeStyle = `rgba(255, 248, 210, ${0.65 * this.enlightenment * pulse})`;
       ctx.lineWidth = 2.5;
@@ -300,14 +321,10 @@ export class Player {
 
     if (this.shockwaveActive) {
       const alpha = 1 - this.shockwaveElapsed / this.shockwaveDuration;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, this.shockwaveRadius);
-      g.addColorStop(0, `rgba(212,184,150,${0.35 * alpha})`);
-      g.addColorStop(0.5, `rgba(126,184,154,${0.25 * alpha})`);
-      g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, this.shockwaveRadius, 0, Math.PI * 2);
-      ctx.fill();
+      const sr = this.shockwaveRadius;
+      ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
+      ctx.drawImage(getShockwaveSprite(), cx - sr, cy - sr, sr * 2, sr * 2);
+      ctx.globalAlpha = 1;
 
       ctx.strokeStyle = `rgba(255,240,180,${0.55 * alpha})`;
       ctx.lineWidth = 3;
@@ -321,12 +338,16 @@ export class Player {
     ctx.save();
     ctx.translate(cx, cy);
 
-    const bodyGrad = ctx.createLinearGradient(0, -24, 0, 24);
-    bodyGrad.addColorStop(0, '#e8eef2');
-    bodyGrad.addColorStop(0.5, '#b8c8d4');
-    bodyGrad.addColorStop(1, '#7eb89a');
+    // Fixed local-space gradient — create once and reuse every frame.
+    if (!this._bodyGrad) {
+      const g = ctx.createLinearGradient(0, -24, 0, 24);
+      g.addColorStop(0, '#e8eef2');
+      g.addColorStop(0.5, '#b8c8d4');
+      g.addColorStop(1, '#7eb89a');
+      this._bodyGrad = g;
+    }
 
-    ctx.fillStyle = bodyGrad;
+    ctx.fillStyle = this._bodyGrad;
     ctx.beginPath();
     ctx.ellipse(0, 4, 14, 20, 0, 0, Math.PI * 2);
     ctx.fill();

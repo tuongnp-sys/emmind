@@ -1,5 +1,7 @@
 /** Layer themes for Meditation: 7 Layers of Ascent */
 
+import { makeRadialSprite, makeCircleSprite, makeEllipseSprite } from './render-cache.js';
+
 /** Movement patterns per layer (see obstacle.js for speed multipliers). */
 export const MOVEMENT_VERTICAL = 'vertical-down';
 export const MOVEMENT_HORIZONTAL = 'horizontal';
@@ -209,6 +211,47 @@ export function getLayerDescendMessage(layerId) {
   return messages[layerId] || 'Be patient. Mindfulness will carry you upward again.';
 }
 
+// --- Shared sprites (rendered once; drawImage is far cheaper than per-frame
+// --- gradient/arc rasterization on low-end Android GPUs) ----------------------
+
+const STAR_HUES = [200, 225, 250, 275, 300];
+let spriteSet = null;
+
+function getSprites() {
+  if (spriteSet) return spriteSet;
+  spriteSet = {
+    starWhite: makeCircleSprite(16, '#ffffff'),
+    starHues: STAR_HUES.map((hue) => makeCircleSprite(16, `hsl(${hue}, 75%, 90%)`)),
+    sparkle: makeCircleSprite(16, 'rgb(255, 220, 160)'),
+    cloud: makeEllipseSprite(64, 26, '#ffffff'),
+    glow: makeRadialSprite(64, [
+      [0, 'rgba(255, 252, 240, 0.55)'],
+      [1, 'rgba(255, 252, 240, 0)'],
+    ]),
+  };
+  return spriteSet;
+}
+
+function hueSpriteIndex(hue) {
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < STAR_HUES.length; i++) {
+    const d = Math.abs(STAR_HUES[i] - hue);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** Offscreen caches render at half logical resolution — gradients are soft, upscale is invisible. */
+const BG_CACHE_SCALE = 0.5;
+/** Day-cycle re-render granularity (~every 1.9s of the 90s cycle). */
+const CYCLE_BUCKETS = 48;
+/** Layer transition re-render granularity (~16 re-renders over 2.2s). */
+const BLEND_BUCKETS = 16;
+
 export class Background {
   constructor(canvas) {
     this.canvas = canvas;
@@ -228,6 +271,18 @@ export class Background {
     this.transitionBlend = 1;
     this.transitionFrom = null;
     this.transitionTo = null;
+    /** @type {HTMLCanvasElement | null} sky + ambient + moon, re-rendered only on key change */
+    this._bgCache = null;
+    this._bgCacheKey = '';
+    /** @type {HTMLCanvasElement | null} nebula baked at pulse=1, drawn with globalAlpha */
+    this._nebulaCache = null;
+    this._nebulaCacheKey = '';
+    /** @type {HTMLCanvasElement | null} victory radiance baked at full alpha */
+    this._victoryCache = null;
+    this._victoryCacheKey = '';
+    /** @type {HTMLCanvasElement | null} enlightenment deep space + nebulas */
+    this._cosmicCache = null;
+    this._cosmicCacheKey = '';
     this._initParticles();
   }
 
@@ -235,14 +290,18 @@ export class Background {
     const w = this.logicalWidth;
     const h = this.logicalHeight;
     const starCount = 80 + this.layer * 25;
-    this.stars = Array.from({ length: starCount }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: Math.random() * 1.8 + 0.2,
-      speed: Math.random() * 0.4 + 0.08,
-      alpha: Math.random() * 0.6 + 0.2,
-      hue: 200 + Math.random() * 80,
-    }));
+    this.stars = Array.from({ length: starCount }, () => {
+      const hue = 200 + Math.random() * 80;
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 1.8 + 0.2,
+        speed: Math.random() * 0.4 + 0.08,
+        alpha: Math.random() * 0.6 + 0.2,
+        hue,
+        spriteIdx: hueSpriteIndex(hue),
+      };
+    });
     this.clouds = Array.from({ length: 8 }, () => ({
       x: Math.random() * w,
       y: Math.random() * h * 0.5,
@@ -307,6 +366,7 @@ export class Background {
     this.cosmicStars = [];
     for (const spec of layerSpecs) {
       for (let i = 0; i < spec.count; i++) {
+        const hue = 200 + Math.random() * 100;
         this.cosmicStars.push({
           x: Math.random() * w,
           y: Math.random() * h,
@@ -315,12 +375,15 @@ export class Background {
           driftX: (Math.random() - 0.5) * 12 * spec.depth,
           driftY: (4 + Math.random() * 18) * spec.depth,
           phase: Math.random() * Math.PI * 2,
-          hue: 200 + Math.random() * 100,
+          hue,
+          spriteIdx: hueSpriteIndex(hue),
           bright: spec.bright + Math.random() * 0.35,
           glow: Math.random() < 0.08,
         });
       }
     }
+    // Depth order is fixed — sort once here instead of every frame.
+    this.cosmicStars.sort((a, b) => a.depth - b.depth);
   }
 
   setDimensions(width, height) {
@@ -385,7 +448,28 @@ export class Background {
     }
   }
 
-  _drawCosmicEnlightenment(ctx, w, h) {
+  /** Create (or reuse) a half-res offscreen canvas with logical-coordinate transform. */
+  _prepareCacheCanvas(existing, w, h) {
+    const cw = Math.max(1, Math.ceil(w * BG_CACHE_SCALE));
+    const ch = Math.max(1, Math.ceil(h * BG_CACHE_SCALE));
+    let cv = existing;
+    if (!cv || cv.width !== cw || cv.height !== ch) {
+      cv = document.createElement('canvas');
+      cv.width = cw;
+      cv.height = ch;
+    }
+    const cctx = cv.getContext('2d');
+    cctx.setTransform(BG_CACHE_SCALE, 0, 0, BG_CACHE_SCALE, 0, 0);
+    cctx.clearRect(0, 0, w, h);
+    return { canvas: cv, ctx: cctx };
+  }
+
+  _getCosmicCache(w, h) {
+    const key = `${w}x${h}`;
+    if (this._cosmicCacheKey === key && this._cosmicCache) return this._cosmicCache;
+
+    const { canvas, ctx } = this._prepareCacheCanvas(this._cosmicCache, w, h);
+
     const deep = ctx.createLinearGradient(0, 0, 0, h);
     deep.addColorStop(0, '#060818');
     deep.addColorStop(0.35, '#0c0824');
@@ -407,24 +491,28 @@ export class Background {
     ctx.fillStyle = nebula2;
     ctx.fillRect(0, 0, w, h);
 
-    const sorted = [...this.cosmicStars].sort((a, b) => a.depth - b.depth);
-    for (const s of sorted) {
+    this._cosmicCache = canvas;
+    this._cosmicCacheKey = key;
+    return canvas;
+  }
+
+  _drawCosmicEnlightenment(ctx, w, h) {
+    ctx.drawImage(this._getCosmicCache(w, h), 0, 0, w, h);
+
+    const sprites = getSprites();
+    for (const s of this.cosmicStars) {
       const twinkle = 0.55 + Math.sin(this.time * 2.2 + s.phase) * 0.45;
-      const alpha = Math.min(1, s.bright * twinkle);
+      const alpha = Math.min(1, Math.max(0, s.bright * twinkle));
+      if (alpha <= 0.01) continue;
       if (s.glow) {
-        const gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 5);
-        gr.addColorStop(0, `hsla(${s.hue}, 80%, 92%, ${alpha * 0.5})`);
-        gr.addColorStop(1, 'transparent');
-        ctx.fillStyle = gr;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r * 5, 0, Math.PI * 2);
-        ctx.fill();
+        const gr = s.r * 5;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.drawImage(sprites.glow, s.x - gr, s.y - gr, gr * 2, gr * 2);
       }
-      ctx.fillStyle = `hsla(${s.hue}, 75%, 90%, ${alpha})`;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(sprites.starHues[s.spriteIdx], s.x - s.r, s.y - s.r, s.r * 2, s.r * 2);
     }
+    ctx.globalAlpha = 1;
 
     if (this.victoryGlow > 0) {
       this._drawVictoryRadiance(ctx, w, h);
@@ -443,25 +531,7 @@ export class Background {
 
     const L = this.layer;
 
-    const cyclePhase =
-      L <= 3 && DAY_CYCLE_SEC > 0
-        ? (this.layerElapsed % DAY_CYCLE_SEC) / DAY_CYCLE_SEC
-        : 0;
-    let colors = getThemeColors(L, cyclePhase);
-
-    if (this.transitionFrom && this.transitionTo && this.transitionBlend < 1) {
-      const t = this.transitionBlend;
-      colors = colors.map((c, i) =>
-        lerpHexColor(this.transitionFrom[i] || c, this.transitionTo[i] || c, t)
-      );
-    }
-
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, colors[2]);
-    grad.addColorStop(0.45, colors[1]);
-    grad.addColorStop(1, colors[0]);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(this._getStaticBackground(w, h), 0, 0, w, h);
 
     if (this.transitionBlend < 0.35) {
       ctx.save();
@@ -474,11 +544,8 @@ export class Background {
     if (L >= 3) this._drawStars(ctx);
     if (L >= 5) this._drawSparkles(ctx);
     if (L === 1) this._drawGround(ctx, w, h);
-    if (L === 5) this._drawMoon(ctx, w, h);
     if (L >= 6) this._drawNebula(ctx, w, h);
     if (L === 7) this._drawCosmicRings(ctx, w, h);
-
-    this._drawAmbientGlow(ctx, w, h);
 
     if (this.victoryGlow > 0) {
       this._drawVictoryRadiance(ctx, w, h);
@@ -487,6 +554,52 @@ export class Background {
     if (this.ascentBorderPulse > 0) {
       this._drawAscentBorderPulse(ctx, w, h);
     }
+  }
+
+  /**
+   * Sky gradient + ambient glow + moon, cached offscreen. Re-rendered only
+   * when layer/size changes, the day cycle moves a bucket, or during the
+   * 2.2s layer transition (16 quantized steps).
+   */
+  _getStaticBackground(w, h) {
+    const L = this.layer;
+    const cyclePhase =
+      L <= 3 && DAY_CYCLE_SEC > 0
+        ? (this.layerElapsed % DAY_CYCLE_SEC) / DAY_CYCLE_SEC
+        : 0;
+    const cycleBucket = Math.floor(cyclePhase * CYCLE_BUCKETS);
+
+    const inTransition = this.transitionFrom && this.transitionTo && this.transitionBlend < 1;
+    const blendBucket = inTransition
+      ? Math.floor(this.transitionBlend * BLEND_BUCKETS)
+      : BLEND_BUCKETS;
+
+    const key = `${L}|${w}x${h}|${cycleBucket}|${blendBucket}`;
+    if (this._bgCacheKey === key && this._bgCache) return this._bgCache;
+
+    let colors = getThemeColors(L, cycleBucket / CYCLE_BUCKETS);
+    if (inTransition) {
+      const t = blendBucket / BLEND_BUCKETS;
+      colors = colors.map((c, i) =>
+        lerpHexColor(this.transitionFrom[i] || c, this.transitionTo[i] || c, t)
+      );
+    }
+
+    const { canvas, ctx } = this._prepareCacheCanvas(this._bgCache, w, h);
+
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, colors[2]);
+    grad.addColorStop(0.45, colors[1]);
+    grad.addColorStop(1, colors[0]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    if (L === 5) this._drawMoon(ctx, w, h);
+    this._drawAmbientGlow(ctx, w, h);
+
+    this._bgCache = canvas;
+    this._bgCacheKey = key;
+    return canvas;
   }
 
   _drawGround(ctx, w, h) {
@@ -503,36 +616,37 @@ export class Background {
   }
 
   _drawClouds(ctx) {
+    const sprites = getSprites();
     for (const c of this.clouds) {
-      ctx.fillStyle = `rgba(255,255,255,${c.alpha})`;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, c.w * 0.5, c.w * 0.2, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = Math.min(1, Math.max(0, c.alpha));
+      ctx.drawImage(sprites.cloud, c.x - c.w * 0.5, c.y - c.w * 0.2, c.w, c.w * 0.4);
     }
+    ctx.globalAlpha = 1;
   }
 
   _drawStars(ctx) {
+    const sprites = getSprites();
+    const useHue = this.layer >= 6;
     for (const s of this.stars) {
-      const a = Math.min(1, s.alpha);
-      if (this.layer >= 6) {
-        ctx.fillStyle = `hsla(${s.hue}, 70%, 85%, ${a})`;
-      } else {
-        ctx.fillStyle = `rgba(255,255,255,${a})`;
-      }
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
+      const a = Math.min(1, Math.max(0, s.alpha));
+      if (a <= 0.01) continue;
+      const sprite = useHue ? sprites.starHues[s.spriteIdx] : sprites.starWhite;
+      ctx.globalAlpha = a;
+      ctx.drawImage(sprite, s.x - s.r, s.y - s.r, s.r * 2, s.r * 2);
     }
+    ctx.globalAlpha = 1;
   }
 
   _drawSparkles(ctx) {
+    const sprites = getSprites();
+    const layerFactor = this.layer / 7;
     for (const sp of this.sparkles) {
-      const a = 0.2 + Math.sin(sp.phase) * 0.35;
-      ctx.fillStyle = `rgba(255, 220, 160, ${a * (this.layer / 7)})`;
-      ctx.beginPath();
-      ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-      ctx.fill();
+      const a = (0.2 + Math.sin(sp.phase) * 0.35) * layerFactor;
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = Math.min(1, a);
+      ctx.drawImage(sprites.sparkle, sp.x - sp.size, sp.y - sp.size, sp.size * 2, sp.size * 2);
     }
+    ctx.globalAlpha = 1;
   }
 
   _drawMoon(ctx, w, h) {
@@ -550,20 +664,36 @@ export class Background {
     ctx.fill();
   }
 
-  _drawNebula(ctx, w, h) {
-    const pulse = 0.35 + Math.sin(this.time * 0.5) * 0.12;
+  /** Nebula baked at pulse=1; the per-frame pulse becomes a globalAlpha multiply. */
+  _getNebulaCache(w, h) {
+    const key = `${w}x${h}`;
+    if (this._nebulaCacheKey === key && this._nebulaCache) return this._nebulaCache;
+
+    const { canvas, ctx } = this._prepareCacheCanvas(this._nebulaCache, w, h);
+
     const g = ctx.createRadialGradient(w * 0.3, h * 0.35, 0, w * 0.3, h * 0.35, w * 0.55);
-    g.addColorStop(0, `rgba(160,100,220,${pulse})`);
-    g.addColorStop(0.45, `rgba(80,50,140,${pulse * 0.5})`);
+    g.addColorStop(0, 'rgba(160,100,220,1)');
+    g.addColorStop(0.45, 'rgba(80,50,140,0.5)');
     g.addColorStop(1, 'transparent');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
 
     const g2 = ctx.createRadialGradient(w * 0.8, h * 0.6, 0, w * 0.8, h * 0.6, w * 0.4);
-    g2.addColorStop(0, `rgba(255,180,100,${pulse * 0.35})`);
+    g2.addColorStop(0, 'rgba(255,180,100,0.35)');
     g2.addColorStop(1, 'transparent');
     ctx.fillStyle = g2;
     ctx.fillRect(0, 0, w, h);
+
+    this._nebulaCache = canvas;
+    this._nebulaCacheKey = key;
+    return canvas;
+  }
+
+  _drawNebula(ctx, w, h) {
+    const pulse = 0.35 + Math.sin(this.time * 0.5) * 0.12;
+    ctx.globalAlpha = Math.min(1, Math.max(0, pulse));
+    ctx.drawImage(this._getNebulaCache(w, h), 0, 0, w, h);
+    ctx.globalAlpha = 1;
   }
 
   _drawCosmicRings(ctx, w, h) {
@@ -599,15 +729,32 @@ export class Background {
     }
   }
 
-  _drawVictoryRadiance(ctx, w, h) {
-    const pulse = 0.5 + Math.sin(this.time * 1.2) * 0.25;
-    const a = this.victoryGlow * pulse;
+  /** Victory radiance baked at full alpha; pulse applied via globalAlpha. */
+  _getVictoryCache(w, h) {
+    const key = `${w}x${h}`;
+    if (this._victoryCacheKey === key && this._victoryCache) return this._victoryCache;
+
+    const { canvas, ctx } = this._prepareCacheCanvas(this._victoryCache, w, h);
+
     const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.65);
-    g.addColorStop(0, `rgba(255, 240, 180, ${a * 0.45})`);
-    g.addColorStop(0.4, `rgba(255, 200, 120, ${a * 0.2})`);
+    g.addColorStop(0, 'rgba(255, 240, 180, 0.45)');
+    g.addColorStop(0.4, 'rgba(255, 200, 120, 0.2)');
     g.addColorStop(1, 'transparent');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
+
+    this._victoryCache = canvas;
+    this._victoryCacheKey = key;
+    return canvas;
+  }
+
+  _drawVictoryRadiance(ctx, w, h) {
+    const pulse = 0.5 + Math.sin(this.time * 1.2) * 0.25;
+    const a = this.victoryGlow * pulse;
+    if (a <= 0.01) return;
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.drawImage(this._getVictoryCache(w, h), 0, 0, w, h);
+    ctx.globalAlpha = 1;
   }
 
   _drawAscentBorderPulse(ctx, w, h) {

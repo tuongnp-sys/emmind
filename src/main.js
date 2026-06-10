@@ -31,6 +31,7 @@ import {
   stopGameAudio,
 } from './audio.js';
 import { TouchJoystick } from './touch-joystick.js';
+import { makeRadialSprite } from './render-cache.js';
 import {
   mapProfile,
   login as sessionLogin,
@@ -59,6 +60,16 @@ import {
 
 /** Emmind standalone — no backend, no energy gate, no commerce. */
 const STANDALONE = true;
+
+// --- Debug/test helpers (URL params) -----------------------------------------
+// ?fps=1   — fps + render-scale overlay on the canvas (device perf testing)
+// ?layer=N — start runs at layer N (testing higher layers without grinding)
+const DEBUG_PARAMS = new URLSearchParams(window.location.search);
+const DEBUG_SHOW_FPS = DEBUG_PARAMS.get('fps') === '1';
+const DEBUG_START_LAYER = Math.min(
+  7,
+  Math.max(0, Number.parseInt(DEBUG_PARAMS.get('layer') ?? '0', 10) || 0)
+);
 
 
 const POINTS_PER_CLEAR = 10;
@@ -259,11 +270,14 @@ const activePointerHolds = new Set();
 const TOUCH_INPUT_ATTACK = 60;
 const TOUCH_INPUT_RELEASE = 20;
 /** Adaptive resolution: step the mobile DPR cap down when frames stay slow. */
-const ADAPTIVE_DPR_STEPS = [2, 1.5, 1.25];
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+// Android GPUs (Mali/Adreno low-end) need a lower starting point than Apple's.
+const ADAPTIVE_DPR_STEPS = IS_ANDROID ? [1.5, 1.25, 1] : [2, 1.5, 1.25];
 const ADAPTIVE_SLOW_FRAME_SEC = 0.0195;
-const ADAPTIVE_SLOW_FRAME_TRIGGER = 60;
+const ADAPTIVE_SLOW_FRAME_TRIGGER = 30;
 let adaptiveDprStep = 0;
 let adaptiveSlowFrames = 0;
+let fpsEma = 0;
 /** Mobile: ground-run speed boost so joystick movement feels responsive. */
 const MOBILE_GROUND_SPEED_FACTOR = 1.15;
 /** Normalized analog from joystick when enabled (-1..1). */
@@ -991,14 +1005,14 @@ function isEnlightenment() {
 
 function resetRunVariables() {
   score = 0;
-  currentLayer = 1;
+  currentLayer = DEBUG_START_LAYER >= 2 ? DEBUG_START_LAYER : 1;
   downgradeStrikes = 0;
   haloEnergy = 0;
   protectiveCharges = 0;
   layerElapsed = 0;
   layerDuration = getLayerDuration(haloEnergy, HALO_MAX);
   practiceScore = 0;
-  practiceTarget = getLayerPracticeTarget(1);
+  practiceTarget = getLayerPracticeTarget(currentLayer);
   survivalTimer = 0;
   scriptureCombo = 0;
   maxScriptureCombo = 0;
@@ -1211,6 +1225,17 @@ function drawHitFlash() {
   ctx.restore();
 }
 
+/** Enlightenment halo baked once (stops remapped for the 0.2r inner radius). */
+let enlightenHaloSprite = null;
+function getEnlightenHaloSprite() {
+  return (enlightenHaloSprite ??= makeRadialSprite(192, [
+    [0, 'rgba(255, 252, 220, 0.75)'],
+    [0.2, 'rgba(255, 252, 220, 0.75)'],
+    [0.56, 'rgba(255, 230, 140, 0.45)'],
+    [1, 'rgba(255, 200, 80, 0)'],
+  ]));
+}
+
 function drawPlayerHaloAura() {
   if (!player) return;
 
@@ -1220,14 +1245,9 @@ function drawPlayerHaloAura() {
   if (isEnlightenment()) {
     const r = ENLIGHTENMENT_HALO_RADIUS;
     ctx.save();
-    const glow = ctx.createRadialGradient(c.x, c.y, r * 0.2, c.x, c.y, r);
-    glow.addColorStop(0, `rgba(255, 252, 220, ${0.75 * pulse})`);
-    glow.addColorStop(0.45, `rgba(255, 230, 140, ${0.45 * pulse})`);
-    glow.addColorStop(1, 'rgba(255, 200, 80, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = Math.min(1, pulse);
+    ctx.drawImage(getEnlightenHaloSprite(), c.x - r, c.y - r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
 
     ctx.strokeStyle = `rgba(255, 248, 200, ${0.85 * pulse})`;
     ctx.lineWidth = 3;
@@ -1278,6 +1298,24 @@ function paintFrame() {
   updateRunStatsDom();
   drawHitFlash();
   drawEnlightenmentHint();
+  drawFpsOverlay();
+}
+
+function drawFpsOverlay() {
+  if (!DEBUG_SHOW_FPS) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(logicalWidth - 132, 6, 126, 26);
+  ctx.font = '600 14px monospace';
+  ctx.fillStyle = fpsEma >= 50 ? '#7dff9a' : fpsEma >= 28 ? '#ffe566' : '#ff7d7d';
+  ctx.textAlign = 'right';
+  ctx.fillText(
+    `${Math.round(fpsEma)} fps @${ADAPTIVE_DPR_STEPS[adaptiveDprStep]}x`,
+    logicalWidth - 12,
+    24
+  );
+  ctx.textAlign = 'left';
+  ctx.restore();
 }
 
 function updateDomHud() {
@@ -1514,7 +1552,7 @@ function enterPlayingMode(token) {
 
   resizeCanvas();
   player.resetPosition();
-  background.setLayer(1);
+  background.setLayer(currentLayer);
   resetLayerProgress();
 
   setGameState(GameState.PLAYING);
@@ -2072,6 +2110,9 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
 
   updateAdaptiveResolution(rawDt);
+  if (DEBUG_SHOW_FPS && rawDt > 0 && rawDt < 0.3) {
+    fpsEma += (1 / rawDt - fpsEma) * 0.05;
+  }
 
   if (enlightenmentOverlayTimer > 0) {
     enlightenmentOverlayTimer = Math.max(0, enlightenmentOverlayTimer - dt);
