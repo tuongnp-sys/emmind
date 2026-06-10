@@ -20,6 +20,8 @@ export class TouchJoystick {
     this.dy = 0;
     this.radius = 48;
     this.deadZone = 0.10;
+    /** Cached base rect — getBoundingClientRect per pointermove forces layout. */
+    this.rect = null;
 
     if (!this.base || !this.stick) return;
 
@@ -46,6 +48,7 @@ export class TouchJoystick {
   onPointerDown(e) {
     if (this.pointerId !== null) return;
     this.pointerId = e.pointerId;
+    this.rect = this.base.getBoundingClientRect();
     this.base.setPointerCapture(e.pointerId);
     this.updateFromEvent(e);
     e.preventDefault();
@@ -60,12 +63,13 @@ export class TouchJoystick {
   onPointerUp(e) {
     if (e.pointerId !== this.pointerId) return;
     this.pointerId = null;
+    this.rect = null;
     this.resetStick();
     e.preventDefault();
   }
 
   updateFromEvent(e) {
-    const rect = this.base.getBoundingClientRect();
+    const rect = this.rect ?? (this.rect = this.base.getBoundingClientRect());
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const maxR = Math.min(rect.width, rect.height) / 2 - 8;
@@ -120,6 +124,7 @@ export class TouchJoystick {
       this.base.releasePointerCapture(this.pointerId);
     }
     this.pointerId = null;
+    this.rect = null;
     this.resetStick();
   }
 }

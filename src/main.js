@@ -115,7 +115,9 @@ const GameState = Object.freeze({
 // --- DOM ---------------------------------------------------------------------
 
 const canvas = document.getElementById('game-canvas');
-const ctx = canvas.getContext('2d');
+// desynchronized: skip the compositor queue on Android (~1-2 frames less input lag).
+// alpha: false is safe — background.draw() fills the whole canvas every frame.
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 
 let logicalWidth = CANVAS_REF_WIDTH;
 let logicalHeight = CANVAS_REF_HEIGHT;
@@ -253,8 +255,15 @@ let victoryStingerPlayedThisRun = false;
 let viewportSyncTimer = null;
 /** @type {Set<HTMLElement>} */
 const activePointerHolds = new Set();
-/** Mobile: lerp rate for joystick input smoothing (higher = snappier). */
-const TOUCH_INPUT_SMOOTH = 22;
+/** Mobile: asymmetric joystick smoothing — near-instant attack, soft release. */
+const TOUCH_INPUT_ATTACK = 60;
+const TOUCH_INPUT_RELEASE = 20;
+/** Adaptive resolution: step the mobile DPR cap down when frames stay slow. */
+const ADAPTIVE_DPR_STEPS = [2, 1.5, 1.25];
+const ADAPTIVE_SLOW_FRAME_SEC = 0.0195;
+const ADAPTIVE_SLOW_FRAME_TRIGGER = 60;
+let adaptiveDprStep = 0;
+let adaptiveSlowFrames = 0;
 /** Mobile: ground-run speed boost so joystick movement feels responsive. */
 const MOBILE_GROUND_SPEED_FACTOR = 1.15;
 /** Normalized analog from joystick when enabled (-1..1). */
@@ -572,9 +581,13 @@ function updateTouchInputSmoothing(dt) {
     resetTouchInputSmoothing();
     return;
   }
-  const t = 1 - Math.exp(-TOUCH_INPUT_SMOOTH * dt);
-  touchMoveVectorSmoothed.x += (touchMoveVector.x - touchMoveVectorSmoothed.x) * t;
-  touchMoveVectorSmoothed.y += (touchMoveVector.y - touchMoveVectorSmoothed.y) * t;
+  // Faster when input magnitude grows (attack), softer when easing off (release).
+  const smoothAxis = (current, target) => {
+    const rate = Math.abs(target) >= Math.abs(current) ? TOUCH_INPUT_ATTACK : TOUCH_INPUT_RELEASE;
+    return current + (target - current) * (1 - Math.exp(-rate * dt));
+  };
+  touchMoveVectorSmoothed.x = smoothAxis(touchMoveVectorSmoothed.x, touchMoveVector.x);
+  touchMoveVectorSmoothed.y = smoothAxis(touchMoveVectorSmoothed.y, touchMoveVector.y);
   if (Math.abs(touchMoveVectorSmoothed.x) < 0.01) touchMoveVectorSmoothed.x = 0;
   if (Math.abs(touchMoveVectorSmoothed.y) < 0.01) touchMoveVectorSmoothed.y = 0;
 }
@@ -897,7 +910,7 @@ function resizeCanvas() {
 
   // Cap DPR on mobile: DPR 3 backing stores tank fps on low-end GPUs (visible as jitter).
   const rawDpr = window.devicePixelRatio || 1;
-  const dpr = isMobileViewport() ? Math.min(rawDpr, 2) : rawDpr;
+  const dpr = isMobileViewport() ? Math.min(rawDpr, ADAPTIVE_DPR_STEPS[adaptiveDprStep]) : rawDpr;
   const scaleX = cssWidth / CANVAS_REF_WIDTH;
   const scaleY = cssHeight / CANVAS_REF_HEIGHT;
 
@@ -2019,6 +2032,27 @@ function drawPausedBanner() {
   ctx.restore();
 }
 
+/**
+ * Drop render resolution one step when frames stay slow (low-end Android).
+ * Only steps down during a run — never back up, to avoid oscillation.
+ */
+function updateAdaptiveResolution(rawDt) {
+  if (!isMobileViewport() || adaptiveDprStep >= ADAPTIVE_DPR_STEPS.length - 1) return;
+  if (rawDt <= 0 || rawDt > 0.3) return; // ignore tab-switch / hiccup outliers
+
+  if (rawDt > ADAPTIVE_SLOW_FRAME_SEC) {
+    adaptiveSlowFrames += 1;
+  } else if (adaptiveSlowFrames > 0) {
+    adaptiveSlowFrames -= 1;
+  }
+
+  if (adaptiveSlowFrames >= ADAPTIVE_SLOW_FRAME_TRIGGER) {
+    adaptiveDprStep += 1;
+    adaptiveSlowFrames = 0;
+    resizeCanvas();
+  }
+}
+
 function gameLoop(timestamp) {
   if (!isPlaying()) {
     animFrameId = null;
@@ -2033,8 +2067,11 @@ function gameLoop(timestamp) {
     return;
   }
 
-  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  const rawDt = (timestamp - lastTime) / 1000;
+  const dt = Math.min(rawDt, 0.05);
   lastTime = timestamp;
+
+  updateAdaptiveResolution(rawDt);
 
   if (enlightenmentOverlayTimer > 0) {
     enlightenmentOverlayTimer = Math.max(0, enlightenmentOverlayTimer - dt);
