@@ -193,7 +193,7 @@ export class Player {
   }
 
   update(dt, keys, options = {}) {
-    const { freeMove = false, moveVector = null, cosmicDrift = false } = options;
+    const { freeMove = false, moveVector = null, cosmicDrift = false, dragMove = null } = options;
 
     if (cosmicDrift) {
       this.driftRetargetTimer -= dt;
@@ -217,36 +217,48 @@ export class Player {
         this._retargetDriftFromBounds(margin);
       }
     } else if (freeMove) {
-      let dx = 0;
-      let dy = 0;
-
-      if (moveVector && (moveVector.x !== 0 || moveVector.y !== 0)) {
-        dx = moveVector.x;
-        dy = moveVector.y;
+      if (dragMove && (dragMove.dx !== 0 || dragMove.dy !== 0)) {
+        // Direct-drag position control: finger displacement is applied 1:1
+        // (no speed cap) — the character keeps up with the finger by design.
+        this.x += dragMove.dx;
+        this.y += dragMove.dy;
+        this.velocityY = 0;
+        this._clampToBounds();
       } else {
-        if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
-        if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
-        if (keys.ArrowUp || keys.KeyW || keys.w) dy -= 1;
-        if (keys.ArrowDown || keys.KeyS || keys.s) dy += 1;
-      }
+        let dx = 0;
+        let dy = 0;
 
-      const norm = this._normalizeAxis(dx, dy);
-      this.x += norm.dx * this.speed * dt;
-      this.y += norm.dy * this.speed * dt;
-      this.velocityY = 0;
-      this._clampToBounds();
+        if (moveVector && (moveVector.x !== 0 || moveVector.y !== 0)) {
+          dx = moveVector.x;
+          dy = moveVector.y;
+        } else {
+          if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
+          if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
+          if (keys.ArrowUp || keys.KeyW || keys.w) dy -= 1;
+          if (keys.ArrowDown || keys.KeyS || keys.s) dy += 1;
+        }
+
+        const norm = this._normalizeAxis(dx, dy);
+        this.x += norm.dx * this.speed * dt;
+        this.y += norm.dy * this.speed * dt;
+        this.velocityY = 0;
+        this._clampToBounds();
+      }
     } else {
-      let dx = 0;
-      const analogX = options.groundMoveX;
-      if (typeof analogX === 'number' && Math.abs(analogX) > 0.03) {
-        dx = analogX;
+      if (dragMove && dragMove.dx !== 0) {
+        this.x += dragMove.dx;
       } else {
-        if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
-        if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
-        if (dx !== 0) dx /= Math.abs(dx);
+        let dx = 0;
+        const analogX = options.groundMoveX;
+        if (typeof analogX === 'number' && Math.abs(analogX) > 0.03) {
+          dx = analogX;
+        } else {
+          if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
+          if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
+          if (dx !== 0) dx /= Math.abs(dx);
+        }
+        this.x += dx * this.speed * dt;
       }
-
-      this.x += dx * this.speed * dt;
       this.velocityY += this.gravity * dt;
       this.y += this.velocityY * dt;
 

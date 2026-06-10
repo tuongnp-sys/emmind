@@ -70,6 +70,8 @@ const DEBUG_START_LAYER = Math.min(
   7,
   Math.max(0, Number.parseInt(DEBUG_PARAMS.get('layer') ?? '0', 10) || 0)
 );
+// ?joy=1 — legacy joystick instead of direct-drag (A/B comparison on device)
+const DEBUG_FORCE_JOY = DEBUG_PARAMS.get('joy') === '1';
 
 
 const POINTS_PER_CLEAR = 10;
@@ -126,9 +128,9 @@ const GameState = Object.freeze({
 // --- DOM ---------------------------------------------------------------------
 
 const canvas = document.getElementById('game-canvas');
-// desynchronized: skip the compositor queue on Android (~1-2 frames less input lag).
 // alpha: false is safe — background.draw() fills the whole canvas every frame.
-const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+// No `desynchronized`: it has known freeze/black-canvas bugs on low-end Mali GPUs.
+const ctx = canvas.getContext('2d', { alpha: false });
 
 let logicalWidth = CANVAS_REF_WIDTH;
 let logicalHeight = CANVAS_REF_HEIGHT;
@@ -284,6 +286,18 @@ const MOBILE_GROUND_SPEED_FACTOR = 1.15;
 const touchMoveVector = { x: 0, y: 0 };
 /** Smoothed joystick vector fed to player movement. */
 const touchMoveVectorSmoothed = { x: 0, y: 0 };
+/** Direct-drag: finger displacement maps 1:1 to player position (no speed cap). */
+const DRAG_SENSITIVITY = 1.15;
+const DRAG_TAP_MAX_CSS = 12;
+const DRAG_TAP_MAX_MS = 250;
+const dragAccum = { x: 0, y: 0 };
+let dragPointerId = null;
+let dragLastX = 0;
+let dragLastY = 0;
+let dragScaleX = 1;
+let dragScaleY = 1;
+let dragStartTime = 0;
+let dragTotalCss = 0;
 let energyCountdownTimer = null;
 /** @type {{ energy: number, isVip: boolean, nextRefillAt: string | null, msUntilRefill: number } | null} */
 let energyStatus = null;
@@ -595,9 +609,13 @@ function updateTouchInputSmoothing(dt) {
     resetTouchInputSmoothing();
     return;
   }
-  // Faster when input magnitude grows (attack), softer when easing off (release).
+  // Attack when magnitude grows OR direction reverses; release only when easing to 0.
   const smoothAxis = (current, target) => {
-    const rate = Math.abs(target) >= Math.abs(current) ? TOUCH_INPUT_ATTACK : TOUCH_INPUT_RELEASE;
+    const reversing = target !== 0 && current !== 0 && Math.sign(target) !== Math.sign(current);
+    const rate =
+      reversing || Math.abs(target) >= Math.abs(current)
+        ? TOUCH_INPUT_ATTACK
+        : TOUCH_INPUT_RELEASE;
     return current + (target - current) * (1 - Math.exp(-rate * dt));
   };
   touchMoveVectorSmoothed.x = smoothAxis(touchMoveVectorSmoothed.x, touchMoveVector.x);
@@ -607,20 +625,97 @@ function updateTouchInputSmoothing(dt) {
 }
 
 function hasActiveTouchMovement() {
-  return activePointerHolds.size > 0 || touchMoveVector.x !== 0 || touchMoveVector.y !== 0;
+  return (
+    activePointerHolds.size > 0 ||
+    touchMoveVector.x !== 0 ||
+    touchMoveVector.y !== 0 ||
+    dragPointerId !== null
+  );
+}
+
+function resetDragInput() {
+  if (dragPointerId !== null && canvas.hasPointerCapture?.(dragPointerId)) {
+    try {
+      canvas.releasePointerCapture(dragPointerId);
+    } catch { /* ignore */ }
+  }
+  dragPointerId = null;
+  dragAccum.x = 0;
+  dragAccum.y = 0;
+  dragTotalCss = 0;
 }
 
 function resetTouchInputForModeChange() {
   mobileJoystick?.release();
   activePointerHolds.clear();
   clearTouchMovementKeys(true);
+  resetDragInput();
+}
+
+/** Consume the accumulated drag displacement (logical px) for this frame. */
+function consumeDragMove() {
+  if (dragAccum.x === 0 && dragAccum.y === 0) return null;
+  const move = { dx: dragAccum.x, dy: dragAccum.y };
+  dragAccum.x = 0;
+  dragAccum.y = 0;
+  return move;
+}
+
+function bindCanvasDragControls() {
+  const onDown = (e) => {
+    // Mouse keeps the desktop click-to-shockwave behavior.
+    if (e.pointerType === 'mouse') return;
+    if (DEBUG_FORCE_JOY) return;
+    if (!shouldUseTouchControls() || !isPlaying() || isPaused || isEnlightenment()) return;
+    if (dragPointerId !== null) return;
+    e.preventDefault();
+    dragPointerId = e.pointerId;
+    const rect = canvas.getBoundingClientRect();
+    dragScaleX = rect.width > 0 ? logicalWidth / rect.width : 1;
+    dragScaleY = rect.height > 0 ? logicalHeight / rect.height : 1;
+    dragLastX = e.clientX;
+    dragLastY = e.clientY;
+    dragStartTime = performance.now();
+    dragTotalCss = 0;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch { /* ignore */ }
+  };
+
+  const onMove = (e) => {
+    if (e.pointerId !== dragPointerId) return;
+    e.preventDefault();
+    const dxCss = e.clientX - dragLastX;
+    const dyCss = e.clientY - dragLastY;
+    dragLastX = e.clientX;
+    dragLastY = e.clientY;
+    dragTotalCss += Math.abs(dxCss) + Math.abs(dyCss);
+    dragAccum.x += dxCss * dragScaleX * DRAG_SENSITIVITY;
+    dragAccum.y += dyCss * dragScaleY * DRAG_SENSITIVITY;
+  };
+
+  const endDrag = (e) => {
+    if (e.pointerId !== dragPointerId) return;
+    dragPointerId = null;
+    const quickTap =
+      dragTotalCss < DRAG_TAP_MAX_CSS && performance.now() - dragStartTime < DRAG_TAP_MAX_MS;
+    if (quickTap && isPlaying() && !isPaused && !isEnlightenment() && currentLayer < 2) {
+      player?.jump();
+    }
+  };
+
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
 }
 
 function syncTouchLayout() {
   const inEnlightenment = isEnlightenment();
   const freeMove = !inEnlightenment && currentLayer >= 2;
   const groundMove = !inEnlightenment && currentLayer < 2;
-  const showJoystick = groundMove || freeMove;
+  // Direct-drag on the canvas replaced the joystick; ?joy=1 brings it back for A/B.
+  const showJoystick = DEBUG_FORCE_JOY && (groundMove || freeMove);
 
   if (touchJoystickMount) {
     touchJoystickMount.classList.toggle('is-hidden', !showJoystick);
@@ -664,8 +759,9 @@ function getPlayerMoveOptions() {
   if (isEnlightenment()) {
     return { cosmicDrift: true };
   }
+  const dragMove = consumeDragMove();
   if (currentLayer < 2) {
-    const opts = { freeMove: false };
+    const opts = { freeMove: false, dragMove };
     if (touchMoveVectorSmoothed.x !== 0) {
       opts.groundMoveX = touchMoveVectorSmoothed.x * MOBILE_GROUND_SPEED_FACTOR;
     }
@@ -676,7 +772,7 @@ function getPlayerMoveOptions() {
   if (touchMoveVectorSmoothed.x !== 0 || touchMoveVectorSmoothed.y !== 0) {
     moveVector = { x: touchMoveVectorSmoothed.x, y: touchMoveVectorSmoothed.y };
   }
-  return { freeMove: true, moveVector };
+  return { freeMove: true, moveVector, dragMove };
 }
 
 function bindPointerHold(el, onPress, onRelease) {
@@ -2071,11 +2167,13 @@ function drawPausedBanner() {
 }
 
 /**
- * Drop render resolution one step when frames stay slow (low-end Android).
+ * Drop render resolution one step when frames stay slow, then fall back to
+ * lite effects at the lowest step. Android only: Apple GPUs run DPR 2 fine,
+ * and mid-game canvas reallocation causes visible hitches on Safari.
  * Only steps down during a run — never back up, to avoid oscillation.
  */
 function updateAdaptiveResolution(rawDt) {
-  if (!isMobileViewport() || adaptiveDprStep >= ADAPTIVE_DPR_STEPS.length - 1) return;
+  if (!IS_ANDROID || !isMobileViewport()) return;
   if (rawDt <= 0 || rawDt > 0.3) return; // ignore tab-switch / hiccup outliers
 
   if (rawDt > ADAPTIVE_SLOW_FRAME_SEC) {
@@ -2084,10 +2182,15 @@ function updateAdaptiveResolution(rawDt) {
     adaptiveSlowFrames -= 1;
   }
 
-  if (adaptiveSlowFrames >= ADAPTIVE_SLOW_FRAME_TRIGGER) {
+  if (adaptiveSlowFrames < ADAPTIVE_SLOW_FRAME_TRIGGER) return;
+  adaptiveSlowFrames = 0;
+
+  if (adaptiveDprStep < ADAPTIVE_DPR_STEPS.length - 1) {
     adaptiveDprStep += 1;
-    adaptiveSlowFrames = 0;
     resizeCanvas();
+  } else {
+    // Already at minimum resolution — shed background effects instead.
+    background?.setLiteMode(true);
   }
 }
 
@@ -2356,6 +2459,7 @@ btnStopMobile?.addEventListener(
 );
 bindRestartButtons();
 bindTouchControls();
+bindCanvasDragControls();
 
 function bindTouchControls() {
   if (touchJoystickMount) {

@@ -267,6 +267,7 @@ export class Background {
     this.sparkles = [];
     this.cosmicEnlightenment = false;
     this.cosmicStars = [];
+    this.liteMode = false;
     this.layerElapsed = 0;
     this.transitionBlend = 1;
     this.transitionFrom = null;
@@ -286,10 +287,22 @@ export class Background {
     this._initParticles();
   }
 
+  /** Very weak devices: halve particle counts and skip sparkles entirely. */
+  setLiteMode(enabled) {
+    const next = Boolean(enabled);
+    if (next === this.liteMode) return;
+    this.liteMode = next;
+    this._initParticles();
+    if (this.cosmicEnlightenment) {
+      this._initCosmicField();
+    }
+  }
+
   _initParticles() {
     const w = this.logicalWidth;
     const h = this.logicalHeight;
-    const starCount = 80 + this.layer * 25;
+    const lite = this.liteMode ? 0.5 : 1;
+    const starCount = Math.round((80 + this.layer * 25) * lite);
     this.stars = Array.from({ length: starCount }, () => {
       const hue = 200 + Math.random() * 80;
       return {
@@ -309,12 +322,15 @@ export class Background {
       speed: 0.2 + Math.random() * 0.4,
       alpha: 0.12 + Math.random() * 0.18,
     }));
-    this.sparkles = Array.from({ length: 40 + this.layer * 12 }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      phase: Math.random() * Math.PI * 2,
-      size: Math.random() * 2 + 0.5,
-    }));
+    this.sparkles = Array.from(
+      { length: this.liteMode ? 0 : 40 + this.layer * 12 },
+      () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        phase: Math.random() * Math.PI * 2,
+        size: Math.random() * 2 + 0.5,
+      })
+    );
   }
 
   setLayer(layer) {
@@ -358,10 +374,11 @@ export class Background {
   _initCosmicField() {
     const w = this.logicalWidth;
     const h = this.logicalHeight;
+    const lite = this.liteMode ? 0.5 : 1;
     const layerSpecs = [
-      { count: 220, depth: 0.25, rMin: 0.15, rMax: 0.9, bright: 0.12 },
-      { count: 180, depth: 0.55, rMin: 0.35, rMax: 1.4, bright: 0.22 },
-      { count: 120, depth: 1.0, rMin: 0.6, rMax: 2.2, bright: 0.38 },
+      { count: Math.round(220 * lite), depth: 0.25, rMin: 0.15, rMax: 0.9, bright: 0.12 },
+      { count: Math.round(180 * lite), depth: 0.55, rMin: 0.35, rMax: 1.4, bright: 0.22 },
+      { count: Math.round(120 * lite), depth: 1.0, rMin: 0.6, rMax: 2.2, bright: 0.38 },
     ];
     this.cosmicStars = [];
     for (const spec of layerSpecs) {

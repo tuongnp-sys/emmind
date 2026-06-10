@@ -403,8 +403,10 @@ function shouldThrottleSfx(name, profile) {
 
 // --- Unlock + iOS session keeper ------------------------------------------------
 
-function buildSilentWavUrl(seconds = 1) {
-  const rate = 8000;
+// 44.1kHz, 20s: an 8kHz/1s loop made iOS degrade the whole hardware audio
+// session (muffled output) and its per-second loop restarts caused ticks.
+function buildSilentWavUrl(seconds = 20) {
+  const rate = 44100;
   const samples = Math.floor(rate * seconds);
   const buf = new ArrayBuffer(44 + samples * 2);
   const v = new DataView(buf);

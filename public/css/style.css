@@ -1332,6 +1332,10 @@ body.game-mobile-play .touch-controls.is-visible {
   max-width: 100%;
   background: #1a2332;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .overlay {
