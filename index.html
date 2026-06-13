@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Emmind — 7 Layers of Ascent</title>
+  <title>Emmind - 7 Layers of Ascent</title>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/emmind.css" />
-  <script src="https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js"></script>
+  <!-- Portal SDKs load dynamically via platform/bootstrap.js (?platform=poki|crazygames|gamepix) -->
 </head>
 <body>
   <div class="app">
@@ -142,10 +142,11 @@
                 ></canvas>
 
                 <div id="overlay-start" class="overlay is-hidden" aria-hidden="true">
-                  <h2>Center Your Heart</h2>
+                  <h2>Emmind - 7 Layers of Ascent</h2>
+                  <p class="overlay-subtitle">Center Your Heart</p>
                   <div class="overlay-mobile-only">
-                    <p><strong>Kéo rê ở vùng trống bất kỳ</strong> trên màn chơi — nhân vật di chuyển theo ngón tay, không cần chạm vào nhân vật.</p>
-                    <p>Layer 1: <strong>chạm</strong> để nhảy · Layer 2+: kéo bay 4 hướng · Mindfulness ≥30%: <strong>Pulse</strong>.</p>
+                    <p><strong>Drag anywhere</strong> on the play area — your character follows your finger.</p>
+                    <p>Layer 1: <strong>tap</strong> to jump · Layer 2+: drag to fly · Mindfulness ≥30%: <strong>Pulse</strong>.</p>
                   </div>
                   <div class="overlay-desktop-only">
                     <p>Fill the <strong>green Practice bar</strong> and reach <strong>80% Mindfulness</strong> (gold bar) to advance each layer.</p>
@@ -182,13 +183,13 @@
                 </div>
 
                 <div id="overlay-enlightenment" class="overlay overlay-layer overlay-enlightenment is-hidden" aria-hidden="true">
-                  <h2>Right Fruition — Chánh Quả</h2>
+                  <h2>Right Fruition</h2>
                   <p>You have attained enlightenment. Drift through boundless space, meeting every thought with compassion.</p>
                   <p class="overlay-note">When you feel ready, touch anywhere to rest in completion.</p>
                 </div>
 
                 <div id="victoryOverlay" class="overlay overlay-victory is-hidden" aria-hidden="true">
-                  <h2>Right Fruition — Chánh Quả</h2>
+                  <h2>Right Fruition</h2>
                   <p class="overlay-note">May this peace extend to all beings — your practice brings light.</p>
                   <p>Final score: <strong id="victory-score">0</strong></p>
                   <p>Best score: <strong id="victory-best">0</strong></p>

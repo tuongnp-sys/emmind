@@ -421,7 +421,7 @@ function showGameControls(visible) {
   }
   syncMobilePlayChrome(visible);
   syncTouchControls(visible);
-  if (visible && isCompactPlayMode()) {
+  if (visible && (isCompactPlayMode() || isPortalMode)) {
     remeasurePlayChromeAfterLayout();
   }
 }
@@ -508,9 +508,63 @@ function measurePlayChrome(compact) {
   return { statsH, sessionH, touchH, headerH: 4 };
 }
 
+/** Measure height even when element uses .is-hidden (portal play-chrome reserve). */
+function measureHiddenElementHeight(el) {
+  if (!el) return 0;
+  if (!el.classList.contains('is-hidden')) {
+    return el.offsetHeight || 0;
+  }
+  el.classList.remove('is-hidden');
+  el.setAttribute('aria-hidden', 'false');
+  const h = el.offsetHeight || 0;
+  el.classList.add('is-hidden');
+  el.setAttribute('aria-hidden', 'true');
+  return h;
+}
+
+/** Portal iframe (e.g. GamePix 800×450) — measure visible chrome above/below canvas. */
+function measurePortalEmbedChrome() {
+  let hudH = 0;
+  let statsH = 0;
+  let sessionH = 0;
+  let controlsH = 0;
+
+  const hud = document.getElementById('hud');
+  const inRun = isPlaying();
+  if (hud && !hud.hidden && hud.offsetParent !== null && !(isPortalMode && inRun)) {
+    hudH = hud.offsetHeight || 0;
+  }
+  if (gameStatsBar && !gameStatsBar.classList.contains('is-hidden')) {
+    statsH = gameStatsBar.offsetHeight || 0;
+  } else if (isPortalMode && !isMobileViewport() && gameSection && !gameSection.hidden) {
+    statsH = measureHiddenElementHeight(gameStatsBar);
+  }
+  if (gameSessionBar && !gameSessionBar.classList.contains('is-hidden')) {
+    sessionH = gameSessionBar.offsetHeight || 0;
+  }
+  if (gameControls && !gameControls.classList.contains('is-hidden')) {
+    controlsH = gameControls.offsetHeight || 0;
+  } else if (isPortalMode && !isMobileViewport() && gameSection && !gameSection.hidden) {
+    controlsH = measureHiddenElementHeight(gameControls);
+  }
+
+  return { hudH, statsH, sessionH, controlsH, padH: 16 };
+}
+
+function flushViewportLayout() {
+  syncGameViewport();
+  resizeCanvas();
+}
+
 function remeasurePlayChromeAfterLayout() {
   requestAnimationFrame(() => {
-    requestAnimationFrame(syncGameViewport);
+    requestAnimationFrame(() => {
+      if (isPortalMode) {
+        flushViewportLayout();
+      } else {
+        syncGameViewport();
+      }
+    });
   });
 }
 
@@ -552,6 +606,19 @@ function syncGameViewport() {
     maxH = Math.max(minStageH, maxH);
 
     document.documentElement.style.setProperty('--touch-controls-h', `${touchH}px`);
+  } else if (isPortalMode) {
+    const { hudH, statsH, sessionH, controlsH, padH } = measurePortalEmbedChrome();
+    const chromeTotal = hudH + statsH + sessionH + controlsH + padH;
+    const minStageH = 180;
+    const availableH = Math.max(minStageH, vh - chromeTotal);
+
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 8));
+    maxH = Math.min(availableH, Math.round(maxW * CANVAS_ASPECT));
+    if (maxH < availableH - 2) {
+      maxW = Math.min(CANVAS_MAX_WIDTH, Math.round(maxH / CANVAS_ASPECT));
+    }
+    maxH = Math.max(minStageH, Math.min(maxH, availableH));
+    document.documentElement.style.removeProperty('--touch-controls-h');
   } else {
     maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 40));
     maxH = Math.round(maxW * CANVAS_ASPECT);
@@ -984,11 +1051,16 @@ function resizeCanvas() {
     getComputedStyle(document.documentElement).getPropertyValue('--game-stage-max-h'),
     10
   );
-  const maxH =
-    Math.floor(container.clientHeight) ||
-    (Number.isFinite(maxHFromCss) && maxHFromCss > 0
-      ? maxHFromCss
-      : Math.round(maxW * CANVAS_ASPECT));
+  const containerH = Math.floor(container.clientHeight);
+  let maxH = containerH;
+  if (isPortalMode && Number.isFinite(maxHFromCss) && maxHFromCss > 0) {
+    maxH = containerH > 0 ? Math.min(containerH, maxHFromCss) : maxHFromCss;
+  } else if (!maxH || maxH <= 0) {
+    maxH =
+      Number.isFinite(maxHFromCss) && maxHFromCss > 0
+        ? maxHFromCss
+        : Math.round(maxW * CANVAS_ASPECT);
+  }
 
   const maxWCap = parseInt(
     getComputedStyle(document.documentElement).getPropertyValue('--game-stage-max-w'),
@@ -1078,7 +1150,7 @@ function syncGameplayChrome() {
   }
   if (inRun) {
     remeasurePlayChromeAfterLayout();
-  } else if (isMobileViewport()) {
+  } else if (isMobileViewport() || isPortalMode) {
     syncGameViewport();
   }
 }
@@ -1637,6 +1709,12 @@ function enterPlayingMode(token) {
   hideAllOverlays();
   hideEndOverlays();
 
+  setGameState(GameState.PLAYING);
+  isPaused = false;
+  syncPauseButtons();
+  showGameControls(true);
+  flushViewportLayout();
+
   if (!background) background = new Background(canvas);
   if (!player) player = new Player(canvas);
   if (!world) world = new WorldManager(logicalWidth, logicalHeight);
@@ -1647,15 +1725,10 @@ function enterPlayingMode(token) {
     particles?.spawnBurst(center.x, center.y, 'dust');
   };
 
-  resizeCanvas();
   player.resetPosition();
   background.setLayer(currentLayer);
   resetLayerProgress();
 
-  setGameState(GameState.PLAYING);
-  isPaused = false;
-  syncPauseButtons();
-  showGameControls(true);
   stopEnergyCountdown();
   updateDomHud();
   startGameLoop();
@@ -2605,11 +2678,20 @@ canvas.addEventListener('click', (e) => {
 // --- Boot --------------------------------------------------------------------
 
 function showBuildStamp() {
+  if (isPortalMode) return;
   const el = document.getElementById('game-build-stamp');
   if (!el) return;
-  const label = isPortalMode ? `emmind-portal · ${platformId}` : `emmind-standalone · ${platformId}`;
+  const label = `emmind-standalone · ${platformId}`;
   el.textContent = label;
   el.hidden = false;
+}
+
+function syncGamePixTitle() {
+  if (platformId !== 'gamepix') return;
+  const title = 'Emmind 7 Layers';
+  document.title = title;
+  const startH2 = document.querySelector('#overlay-start h2');
+  if (startH2) startH2.textContent = title;
 }
 
 function bindPortalPauseHandlers() {
@@ -2640,6 +2722,7 @@ async function boot() {
 
   await platformBootstrap((pct) => reportLoading(pct));
   reportLoading(50);
+  syncGamePixTitle();
   showBuildStamp();
   syncPortalChrome();
   initRememberUsername();

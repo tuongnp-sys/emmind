@@ -2,6 +2,9 @@
 
 Checklist before submitting to each host. Test builds with `npm run package:<portal>`.
 
+**Full spec for New Agent:** [PORTAL_PLAYBOOK.md](./PORTAL_PLAYBOOK.md)  
+**Battle-tested lessons (Emmind rejections, assets, workflow):** [AGENT_HANDOFF.md](./AGENT_HANDOFF.md)
+
 ## Local test URLs
 
 | Platform | URL |

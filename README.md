@@ -48,7 +48,7 @@ npm run package:crazygames
 npm run package:gamepix
 ```
 
-See [docs/PORTAL_QA.md](docs/PORTAL_QA.md) for per-host checklists.
+See [docs/PORTAL_PLAYBOOK.md](docs/PORTAL_PLAYBOOK.md) for the full portal spec (paste to New Agent). Short checklists: [docs/PORTAL_QA.md](docs/PORTAL_QA.md).
 
 ## Platform layer
 

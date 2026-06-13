@@ -22,9 +22,33 @@ function bindGamePixCallbacks() {
   gp.on.soundOff = () => soundOffHandler?.();
 }
 
+function waitForGamePix(timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    if (window.GamePix) {
+      resolve(true);
+      return;
+    }
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      if (window.GamePix) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 export async function platformInit() {
+  const ready = window.GamePix ? true : await waitForGamePix();
   bindGamePixCallbacks();
-  return Boolean(window.GamePix);
+  window.GamePix?.game?.gameLoading?.(0);
+  return ready && Boolean(window.GamePix);
 }
 
 export function reportLoading(percent) {

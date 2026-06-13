@@ -5,9 +5,9 @@ Build with `npm run package:<portal>`. Upload the matching ZIP to each developer
 | File | Platform | Upload |
 |------|----------|--------|
 | `emmind-itch.zip` | itch.io | [Dashboard](https://itch.io/dashboard) → Uploads → HTML → **Playable in browser** |
-| `emmind-poki.zip` | Poki | [Poki for Developers](https://developers.poki.com/) |
+| `emmind-poki.zip` | Poki | [Poki for Developers](https://developers.poki.com/) — see [poki-submission.md](poki-submission.md) |
 | `emmind-crazygames.zip` | CrazyGames | [Developer Portal](https://developer.crazygames.com/) — Basic launch first |
-| `emmind-gamepix.zip` | GamePix | [GamePix Developers](https://www.gamepix.com/developers) |
+| `emmind-gamepix.zip` | GamePix | [GamePix Developers](https://www.gamepix.com/developers) — see [gamepix-submission.md](gamepix-submission.md) |
 
 Last build: ~10.8 MB total (under CrazyGames 50 MB limit).
 

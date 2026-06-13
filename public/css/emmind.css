@@ -10,6 +10,77 @@
 }
 
 /* Portal hosts (Poki / CrazyGames / GamePix) — minimal chrome, instant play */
+body.portal-mode {
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+}
+
+body.portal-mode .app {
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  padding: 0.35rem 0.5rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body.portal-mode .main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body.portal-mode .game-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body.portal-mode .game-play-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.portal-mode .game-stage {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.portal-mode .game-stage-viewport {
+  flex: 0 0 auto;
+  max-height: var(--game-stage-max-h);
+  overflow: hidden;
+}
+
+body.portal-mode #game-controls {
+  flex-shrink: 0;
+  margin-bottom: 0.25rem;
+}
+
+body.portal-mode.game-active #hud {
+  display: none !important;
+}
+
+body.portal-mode.game-active {
+  overflow: hidden !important;
+}
+
+body.portal-mode.game-active #game-build-stamp {
+  display: none !important;
+}
+
 body.portal-mode .header,
 body.portal-mode .footer {
   display: none !important;
@@ -24,7 +95,13 @@ body.portal-mode #hud .hud-logout {
 }
 
 body.portal-mode #overlay-start h2 {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+body.portal-mode #overlay-start .overlay-subtitle {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
 }
 
 body.portal-mode #overlay-start .overlay-desktop-only,
@@ -38,4 +115,16 @@ body.portal-mode #overlay-start::after {
   color: var(--text-muted);
   font-size: 0.9rem;
   margin-bottom: 0.75rem;
+}
+
+body.portal-mode.game-active .game-stats-bar {
+  flex-shrink: 0;
+  padding: 0.28rem 0.45rem 0.22rem;
+  margin-bottom: 0.2rem;
+}
+
+.overlay-subtitle {
+  color: var(--text-muted);
+  font-size: 1rem;
+  margin: -0.25rem 0 0.75rem;
 }

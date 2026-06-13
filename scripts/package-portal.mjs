@@ -17,6 +17,7 @@ const outputs = {
 const env = { ...process.env };
 if (target !== 'itch') {
   env.VITE_PORTAL = '1';
+  env.VITE_PORTAL_TARGET = target;
 }
 
 process.chdir(root);

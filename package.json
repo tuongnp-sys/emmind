@@ -14,9 +14,15 @@
     "package:poki": "node scripts/package-portal.mjs poki",
     "package:crazygames": "node scripts/package-portal.mjs crazygames",
     "package:gamepix": "node scripts/package-portal.mjs gamepix",
+    "test:gamepix-embed": "node scripts/test-gamepix-embed.mjs",
+    "capture:itch-marketing": "node scripts/capture-itch-marketing.mjs",
+    "capture:itch-trailer": "node scripts/capture-itch-trailer.mjs",
+    "build:gamepix-marketing": "node scripts/build-gamepix-marketing.mjs",
+    "build:crazygames-marketing": "node scripts/build-crazygames-marketing.mjs",
     "sync:joymed": "node scripts/sync-from-joymed.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.60.0",
     "vite": "^6.2.0"
   }
 }

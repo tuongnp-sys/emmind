@@ -1,0 +1,15 @@
+# YouTube upload (copy-paste)
+
+**Title:** Emmind — 7 Layers of Ascent | Gameplay Trailer
+
+**Description:**
+A meditative HTML5 ascent through 7 layers of mind.
+Play free on itch.io: [paste your itch page URL]
+
+Desktop: Arrow keys / WASD · Space to jump
+Mobile: Drag anywhere on the play area to move · Tap to jump
+
+**Visibility:** Unlisted
+
+Then paste the YouTube link into itch.io → Edit project → Gameplay video or trailer.
+
