@@ -74,7 +74,9 @@ Reference: [GamePix SDK Bible](http://gpxprj.blob.core.windows.net/api/index.htm
 - [ ] `GamePix.on.soundOff` / `soundOn` — mute and restore layer music
 - [ ] `GamePix.game.ping('level_complete')` on layer ascend
 - [ ] `GamePix.game.ping('game_over')` on run end (game over / victory / surrender)
-- [ ] `GamePix.interstitialAd()` only after **Game Over** or **Victory** → **Meditate Again**
+- [ ] `GamePix.interstitialAd()` after **Game Over** or **Victory** → **Meditate Again** (restart)
+- [ ] `GamePix.interstitialAd()` before `ping('level_complete')` on layer ascend
+- [ ] Start button disabled until `loadingFinished()` / `gameLoaded`
 - [ ] No interstitial on first **Start Meditation** or after **Surrender**
 - [ ] Scores persist via `GamePix.localStorage` on GamePix host
 - [ ] Mobile portrait + landscape playable

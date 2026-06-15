@@ -27,6 +27,15 @@ try {
   await page.waitForSelector('#btn-start-game', { timeout: 15000 });
   pass('Start button visible');
 
+  await page.waitForFunction(
+    () => {
+      const btn = document.getElementById('btn-start-game');
+      return btn && !btn.disabled;
+    },
+    { timeout: 15000 },
+  );
+  pass('Start enabled only after host SDK ready (gameLoaded)');
+
   const title = await page.title();
   if (title !== GAMEPIX_TITLE) {
     fail(`Title must be "${GAMEPIX_TITLE}", got "${title}"`);

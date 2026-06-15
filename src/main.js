@@ -246,6 +246,11 @@ let gameState = GameState.IDLE;
 let sessionToken = 0;
 /** @type {'gameover' | 'victory' | 'surrender' | null} */
 let lastRunEndState = null;
+/** Portal hosts: menu/start stay locked until GamePix.game.gameLoaded (or equivalent). */
+let hostMenuReady = false;
+/** GamePix: defer ping until after interstitialAd on layer ascend (avoids SDK wait overlay). */
+let pendingLevelCompletePing = null;
+let gamePixLevelAdInProgress = false;
 let isPaused = false;
 
 let score = 0;
@@ -1196,6 +1201,8 @@ function resetRunVariables() {
   pendingLayerUp = false;
   layerTransitionTimer = 0;
   layerTransitionAscending = false;
+  pendingLevelCompletePing = null;
+  gamePixLevelAdInProgress = false;
   enlightenmentPulse = 0;
   isPaused = false;
   hitFlashTimer = 0;
@@ -1533,9 +1540,10 @@ function updateEnergyCountdownDisplay() {}
 
 function syncStartButtonState() {
   if (!btnStartGame) return;
-  btnStartGame.disabled = false;
-  btnStartGame.classList.remove('is-disabled');
-  btnStartGame.setAttribute('aria-disabled', 'false');
+  const ready = !isPortalMode || hostMenuReady;
+  btnStartGame.disabled = !ready;
+  btnStartGame.classList.toggle('is-disabled', !ready);
+  btnStartGame.setAttribute('aria-disabled', ready ? 'false' : 'true');
   btnStartGame.textContent = 'Start Meditation';
   btnStartGame.setAttribute('aria-label', 'Start meditation game');
 }
@@ -1752,6 +1760,7 @@ async function runCommercialBreak() {
   gameplayStop();
   stopGameLoop();
   stopGameAudio();
+  syncTouchControls(false);
   const prevPaused = isPaused;
   isPaused = true;
   try {
@@ -1759,6 +1768,35 @@ async function runCommercialBreak() {
   } finally {
     isPaused = prevPaused;
     lastRunEndState = null;
+    if (isPlaying() && !isPaused) {
+      syncTouchControls(true);
+      resumeLayerMusic(currentLayer);
+    }
+  }
+}
+
+/** GamePix level ascend: interstitialAd then ping (not ping alone — avoids "Wait… resume" test overlay). */
+async function runGamePixLevelCompleteAd() {
+  if (gamePixLevelAdInProgress || !pendingLevelCompletePing) return;
+  gamePixLevelAdInProgress = true;
+  const payload = pendingLevelCompletePing;
+  pendingLevelCompletePing = null;
+
+  stopGameAudio();
+  syncTouchControls(false);
+  const prevPaused = isPaused;
+  isPaused = true;
+
+  try {
+    await commercialBreak();
+    pingLevelComplete(payload.score, payload.layer, {});
+  } finally {
+    gamePixLevelAdInProgress = false;
+    if (isPlaying()) {
+      isPaused = prevPaused;
+      syncTouchControls(!isPaused);
+      if (!isPaused) resumeLayerMusic(currentLayer);
+    }
   }
 }
 
@@ -1981,7 +2019,11 @@ function ascendLayer() {
   playLayerAscendStinger(currentLayer);
   announceGame(`Layer ascended. ${getLayerName(currentLayer)}. +${ascendBonus} focus.`);
   happyTime();
-  pingLevelComplete(score, currentLayer, {});
+  if (platformId === 'gamepix') {
+    pendingLevelCompletePing = { score, layer: currentLayer };
+  } else {
+    pingLevelComplete(score, currentLayer, {});
+  }
 }
 
 function checkLayerProgress(dt) {
@@ -2145,6 +2187,10 @@ function finishLayerTransition() {
     resetLayerTimer();
     scriptureCombo = 0;
     syncTouchLayout();
+  }
+
+  if (wasAscending && platformId === 'gamepix' && pendingLevelCompletePing) {
+    void runGamePixLevelCompleteAd();
   }
 }
 
@@ -2420,7 +2466,6 @@ async function initPortalSession() {
   authPanel.hidden = true;
   gameSection.hidden = false;
   await ensureGameObjects();
-  await enterMenuAfterLogin();
   console.log('[Emmind] Portal session ready:', currentUser.username);
 }
 
@@ -2697,13 +2742,14 @@ function syncGamePixTitle() {
 function bindPortalPauseHandlers() {
   registerGamePixHandlers({
     onPause: () => {
-      if (isPlaying()) {
+      if (isPlaying() || layerTransitionTimer > 0 || gamePixLevelAdInProgress) {
         syncTouchControls(false);
         if (!isPaused) setPaused(true);
       }
       stopGameAudio();
     },
     onResume: () => {
+      if (gamePixLevelAdInProgress) return;
       if (isPlaying() && isPaused) {
         setPaused(false);
         syncTouchControls(true);
@@ -2741,6 +2787,10 @@ async function boot() {
   await preloadAudioAssets();
   reportLoading(100);
   await loadingFinished();
+  hostMenuReady = true;
+  if (isPortalMode && currentUser) {
+    await enterMenuAfterLogin();
+  }
   console.log('[Emmind] Ready. Platform:', platformId, 'portal:', isPortalMode);
 }
 

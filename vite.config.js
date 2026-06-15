@@ -34,7 +34,8 @@ export default defineConfig({
           `<h2>${GAMEPIX_TITLE}</h2>`,
         );
 
-        const sdkTag = `  <script src="${GAMEPIX_SDK}"></script>`;
+        const sdkTag =
+          `  <script src="${GAMEPIX_SDK}" data-emmind-sdk="gamepix"></script>`;
         if (out.includes(GAMEPIX_SDK)) {
           return out;
         }

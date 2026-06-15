@@ -111,7 +111,13 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 - New footage = new Unlisted upload + update links on all portals **after** GamePix unlocks the form (post-review).
 - Old itch trailer title does **not** block GamePix review if ZIP and in-game title are correct.
 
-### F. Performance / smooth play
+### F. GamePix rejection round 3 (SDK + level 2 wait)
+
+| Issue | Fix |
+|-------|-----|
+| SDK flagged, not integrated | Portal menu only after `loadingFinished()`; `gamepix.js` static in ZIP `<head>` |
+| “Wait. Game will resume in 4 seconds” at layer 2 | `ping('level_complete')` alone triggers SDK test pause — call `interstitialAd()` first on layer ascend, then ping |
+
 
 - Adaptive canvas DPR on mobile; avoid layout work every frame.
 - Portal: subtract chrome before setting canvas height — prevents reflow and scroll.

@@ -98,7 +98,7 @@ npm run test:gamepix-embed
 - [ ] ZIP `index.html`: `<title>Emmind 7 Layers</title>`
 - [ ] ZIP contains `gamepix.js` script in `<head>`
 - [ ] No visible "gamepix" text during gameplay
-- [ ] 800×450 preview: play without page scroll
+- [ ] Start disabled until `gameLoaded`; layer ascend runs `interstitialAd` before `ping`
 - [ ] Dashboard title = **Emmind 7 Layers**
 - [ ] Upload to existing entry `emmind-7-layers` → **Submit for review**
 

@@ -389,17 +389,16 @@ itch (public, embed QA)
 - Add `packages/gamepix-submission.md` and `packages/crazygames-submission.md` mirroring `poki-submission.md`.
 - Poki submit when developer account is active.
 
-### 11.1 GamePix first rejection (Emmind — fixable, resubmit)
+### 11.1 GamePix rejections (Emmind)
 
-**Email feedback (typical three items)**
+**Round 1–2 (iframe / title / SDK script / gamepix UI text)** — see table above in §6.
 
-| # | Issue | Root cause | Fix (Emmind) |
-|---|--------|------------|--------------|
-| 1 | Game does not fit **800×450** iframe | Desktop `syncGameViewport()` used `maxH = Math.max(480, maxH)`; portal did not subtract stats/HUD/controls | Portal-only branch + `emmind.css` embed layout; no 480px floor in portal mode |
-| 2 | Title mismatch vs namespace | Dashboard `Emmind 7 Layers` vs in-game em dash `—`; start overlay showed “Center Your Heart” not game title | Unify to `Emmind - 7 Layers of Ascent` in `<title>`, `<h2>`, and GamePix form |
-| 3 | SDK integration not detected | SDK loaded only at runtime in `bootstrap.js`; no static `<script>` in submitted `index.html` | `vite.config.js` injects GamePix script when `VITE_PORTAL_TARGET=gamepix`; `scripts/package-portal.mjs` sets that env |
+**Round 3 (SDK + level 2 wait message)**
 
-**Also fixed on resubmit**: removed bilingual **Chánh Quả** from layer-7 overlays; mobile start hints translated to English.
+| # | Issue | Fix |
+|---|--------|-----|
+| 1 | SDK flagged but not integrated | Portal menu/start only after `gameLoaded`; static `gamepix.js` in ZIP `<head>` |
+| 2 | “Wait. Game will resume in 4 seconds” at layer 2 | Caused by `ping('level_complete')` without `interstitialAd` — defer ping until after `interstitialAd()` on layer ascend |
 
 **Resubmit checklist**
 

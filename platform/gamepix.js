@@ -94,12 +94,15 @@ export function pingGameOver(score, layer, achievements = {}) {
   });
 }
 
+/** Pause game before calling; resume in caller after this resolves (GamePix SDK Bible). */
 export async function commercialBreak() {
-  const fn = window.GamePix?.interstitialAd;
-  if (!fn) return;
+  const gp = window.GamePix;
+  const fn = gp?.interstitialAd;
+  if (!fn) return { success: false };
   try {
-    await fn.call(window.GamePix);
+    const result = await fn.call(gp);
+    return result ?? { success: true };
   } catch {
-    /* portal may skip ad */
+    return { success: false };
   }
 }
