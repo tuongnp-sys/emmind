@@ -87,20 +87,34 @@ https://youtu.be/_JbD8JpLqHo
 
 ---
 
-## Resubmit checklist
+## Resubmit checklist (order matters)
+
+### 1. Build and verify locally
 
 ```bash
 npm run package:gamepix
-npm run preview
 npm run test:gamepix-embed
 ```
 
 - [ ] ZIP `index.html`: `<title>Emmind 7 Layers</title>`
-- [ ] ZIP contains `gamepix.js` script in `<head>`
+- [ ] ZIP contains `gamepix.js` in `<head>` with `data-emmind-sdk="gamepix"`
 - [ ] No visible "gamepix" text during gameplay
-- [ ] Start disabled until `gameLoaded`; layer ascend runs `interstitialAd` before `ping`
+- [ ] Start menu disabled until `gameLoaded` (boot finishes before Start is clickable)
+- [ ] Layer ascend: `interstitialAd` before `ping` — no “Wait. Game will resume in 4 seconds”
+- [ ] 800×450: play without page scroll
+
+### 2. SDK Testing Toolkit (before dashboard Submit)
+
+- [ ] my.gamepix.com → **SDK Testing Toolkit** → upload `emmind-gamepix.zip` → **pass**
+
+### 3. Dashboard upload
+
+- [ ] Upload `packages/emmind-gamepix.zip`
+- [ ] Icon `packages/gamepix-marketing/icon-256.png` (if not already current)
+- [ ] Cover `packages/gamepix-marketing/cover-1360x850.png` (if not already current)
 - [ ] Dashboard title = **Emmind 7 Layers**
-- [ ] Upload to existing entry `emmind-7-layers` → **Submit for review**
+- [ ] SDK Integration = **Yes**
+- [ ] **Submit for review** on entry `emmind-7-layers`
 
 ---
 

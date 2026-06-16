@@ -63,23 +63,24 @@ Basic launch: minimal SDK. Full launch: data + ads verified.
 
 Reference: [GamePix SDK Bible](http://gpxprj.blob.core.windows.net/api/index.html)
 
+**Submit order:** `package:gamepix` → `test:gamepix-embed` → **SDK Testing Toolkit** → dashboard upload → **Submit for review**.
+
 - [ ] `npm run package:gamepix` → `packages/emmind-gamepix.zip`
-- [ ] `gamepix.js` in `index.html` `<head>` (Network tab)
+- [ ] `gamepix.js` in `index.html` `<head>` with `data-emmind-sdk="gamepix"` (Network tab)
 - [ ] `GamePix.game.gameLoading(0→100)` during boot
-- [ ] `GamePix.game.gameLoaded(callback)` — menu ready only after callback
+- [ ] `GamePix.game.gameLoaded(callback)` — menu + Start only after callback (`hostMenuReady`)
 - [ ] No music before **Start Meditation** / before `gameLoaded`
 - [ ] Console: no `GAMEPIX_LOADED_NOT_CALLED` errors
 - [ ] `GamePix.on.pause` — gameplay, touch, and audio freeze
 - [ ] `GamePix.on.resume` — game resumes correctly
 - [ ] `GamePix.on.soundOff` / `soundOn` — mute and restore layer music
-- [ ] `GamePix.game.ping('level_complete')` on layer ascend
+- [ ] Layer ascend: `interstitialAd()` **before** `ping('level_complete')` (avoids “Wait… resume” overlay)
 - [ ] `GamePix.game.ping('game_over')` on run end (game over / victory / surrender)
 - [ ] `GamePix.interstitialAd()` after **Game Over** or **Victory** → **Meditate Again** (restart)
-- [ ] `GamePix.interstitialAd()` before `ping('level_complete')` on layer ascend
-- [ ] Start button disabled until `loadingFinished()` / `gameLoaded`
 - [ ] No interstitial on first **Start Meditation** or after **Surrender**
 - [ ] Scores persist via `GamePix.localStorage` on GamePix host
 - [ ] Mobile portrait + landscape playable
+- [ ] SDK Testing Toolkit pass (upload ZIP before dashboard Submit)
 
 ---
 

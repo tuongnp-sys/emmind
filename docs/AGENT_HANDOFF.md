@@ -37,7 +37,7 @@ itch (public) → GamePix (ZIP) → CrazyGames Basic (loose files) → Poki (whe
 |------|-----------|
 | **No** music/SFX before user gesture | Autoplay policy fail |
 | `gameLoaded` / `gameLoadingFinished` **before** interactive menu | GamePix/Poki auto-reject |
-| **Ads only on restart** after game over/victory | Ad on first Start = reject |
+| **No ad on first Start**; GamePix ads on layer ascend + restart after game over/victory | Ad on first Start = reject |
 | Portal pause → stop loop + audio + touch | QA requirement |
 | **Separate portal viewport math** — not standalone desktop | GamePix 800×450 scroll = reject |
 
@@ -59,7 +59,7 @@ itch (public) → GamePix (ZIP) → CrazyGames Basic (loose files) → Poki (whe
 | Title | Free (`Emmind - 7 Layers of Ascent`) | **Must match namespace** (`Emmind 7 Layers`) | Form-specific | Form-specific |
 | Iframe QA | 900×520 embed | **800×450, no page scroll** | Portal preview | Portal preview |
 | SDK in HTML | None | **Static `<script gamepix.js>` in `<head>`** | Dynamic OK | Dynamic OK |
-| Ads | None | `interstitialAd` after Game Over/Victory → restart | Midgame on restart | `commercialBreak` on restart |
+| Ads | None | `interstitialAd` on layer ascend + after Game Over/Victory → restart | Midgame on restart | `commercialBreak` on restart |
 | Cover | 630×500 | 1360×850 + icon 256×256 | 3 sizes + video ≤20s | Per form |
 | In-game language | Flexible | **100% English** | English | English |
 
@@ -84,9 +84,9 @@ itch (public) → GamePix (ZIP) → CrazyGames Basic (loose files) → Poki (whe
 
 ### B. ZIP / SDK Testing Toolkit
 
+- **Order:** `npm run package:gamepix` → **SDK Testing Toolkit** (upload same ZIP) → dashboard upload → **Submit for review**. Do not Submit before Toolkit pass.
 - A complete SDK ZIP **does not** guarantee a visible demo ad. The toolkit checks **hooks fire correctly**, not ad creatives.
-- Ads trigger only: die or win → **Meditate Again**. First Start and Surrender **never** show ads — by design.
-- Pass SDK Toolkit by uploading the ZIP there before expecting the dashboard SDK checkbox to validate.
+- **GamePix ad moments:** (1) after layer transition ends on ascend — `interstitialAd()` then `ping('level_complete')`; (2) **Meditate Again** after game over/victory. First Start and Surrender **never** show ads.
 
 ### C. GamePix marketing assets
 
@@ -115,9 +115,20 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 
 | Issue | Fix |
 |-------|-----|
-| SDK flagged, not integrated | Portal menu only after `loadingFinished()`; `gamepix.js` static in ZIP `<head>` |
+| SDK flagged, not integrated | Portal menu only after `loadingFinished()`; `gamepix.js` static in ZIP `<head>` with `data-emmind-sdk="gamepix"` |
 | “Wait. Game will resume in 4 seconds” at layer 2 | `ping('level_complete')` alone triggers SDK test pause — call `interstitialAd()` first on layer ascend, then ping |
 
+**Implementation (Emmind):**
+
+| Piece | Path / behavior |
+|-------|-----------------|
+| Defer portal menu | `initPortalSession()` does not show start overlay; `boot()` calls `enterMenuAfterLogin()` only after `loadingFinished()` |
+| Lock Start until ready | `hostMenuReady` + `syncStartButtonState()` — disabled until `gameLoaded` |
+| Layer ascend ad | `ascendLayer()` sets `pendingLevelCompletePing`; `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → `commercialBreak()` then `pingLevelComplete()` |
+| Restart ad | `beginNewRun()` → `runCommercialBreak()` when `lastRunEndState` is game over/victory |
+| SDK inject | `vite.config.js` when `VITE_PORTAL_TARGET=gamepix` |
+
+### G. Performance / smooth play
 
 - Adaptive canvas DPR on mobile; avoid layout work every frame.
 - Portal: subtract chrome before setting canvas height — prevents reflow and scroll.
@@ -125,7 +136,7 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 - No Google Fonts / analytics CDN in submission build — latency + policy risk.
 - Run `npm run measure:dist` — CrazyGames < 50 MB; itch < 1000 files.
 
-### G. CrazyGames and Poki (avoid repeat mistakes)
+### H. CrazyGames and Poki (avoid repeat mistakes)
 
 - CrazyGames Basic can reject vague metadata — desktop + mobile controls must be explicit; videos ≤ 20s.
 - Poki account must be **provisioned by Poki** — self-signup often fails; keep `emmind-poki.zip` ready.
@@ -138,19 +149,21 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 npm run package:<portal>
 npm run measure:dist
 npm run preview                    # separate terminal
-# GamePix also:
+# GamePix also (in order):
 npm run test:gamepix-embed
 npm run build:gamepix-marketing    # before uploading icon/cover
+# Then: SDK Testing Toolkit on my.gamepix.com → upload ZIP → pass
 ```
 
 **Manual verify:**
 
 - [ ] Open ZIP → `index.html` at root; paths use `/` not `\`
-- [ ] GamePix: `dist/index.html` contains `gamepix.js` in `<head>`
+- [ ] GamePix: `dist/index.html` contains `gamepix.js` in `<head>` (`data-emmind-sdk="gamepix"`)
 - [ ] In-game title = dashboard title (GamePix: `Emmind 7 Layers`)
 - [ ] No visible “gamepix” / “poki” text during gameplay
 - [ ] GamePix 800×450: playable, **no page scroll**
-- [ ] First Start: **no** ad; after game over → restart: ad hook runs
+- [ ] Start disabled until `gameLoaded`; menu appears only after boot finishes
+- [ ] First Start: **no** ad; layer ascend: `interstitialAd` before `ping`; game over → restart: ad hook runs
 - [ ] Console: no `GAMEPIX_LOADED_NOT_CALLED`
 - [ ] 100% English in-game UI (GamePix)
 - [ ] Icon/cover at exact pixel spec; title on assets matches
@@ -191,20 +204,28 @@ npm run build:gamepix-marketing    # before uploading icon/cover
 
 ## 8. One-line brief for a greenfield project
 
-> Vite `base:'./'`, adapter per portal, portal mode in week 1, ads restart-only, audio after gesture, GamePix: static `gamepix.js` in ZIP + title matches namespace + fit 800×450 + English UI, Windows ZIP via `tar -a -cf`, CrazyGames = loose files, marketing PNGs via base64 in Playwright, test `?platform=` and exact iframe size before submit, itch first then GamePix, pre-write `packages/*-submission.md`.
+> Vite `base:'./'`, adapter per portal, portal mode in week 1, no ad on first Start, GamePix: menu after `gameLoaded`, `interstitialAd` on layer ascend + restart, static `gamepix.js` in ZIP, title matches namespace, fit 800×450, English UI, SDK Toolkit before Submit, Windows ZIP via `tar -a -cf`, CrazyGames = loose files, marketing PNGs via base64 in Playwright, test `?platform=` and `test:gamepix-embed`, itch first then GamePix, pre-write `packages/*-submission.md`.
 
 ---
 
 ## 9. GamePix ad timing (reference)
 
-Ads call `GamePix.interstitialAd()` via `commercialBreak()` in `platform/gamepix.js`.  
-In `src/main.js`, `shouldRunCommercialBreak()` returns true only when:
+All ads go through `commercialBreak()` → `GamePix.interstitialAd()` in `platform/gamepix.js` (pause game/audio before call; resume in caller).
 
-- `isPortalMode` is active
-- `lastRunEndState` is `'gameover'` or `'victory'` (not `'surrender'`)
-- User clicked restart (**Meditate Again**) → `beginNewRun()` → `runCommercialBreak()` before the new run
+**A. Layer ascend** (`platformId === 'gamepix'` only)
 
-First **Start Meditation** never calls `commercialBreak()`.
+1. `ascendLayer()` — does **not** call `pingLevelComplete` immediately; sets `pendingLevelCompletePing`.
+2. Layer transition overlay runs (~2.2s).
+3. `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → `interstitialAd()` then `ping('level_complete')`.
+
+Calling `ping` without `interstitialAd` first triggers GamePix review overlay: *“Wait. Game will resume in 4 seconds.”*
+
+**B. Restart after run end**
+
+`shouldRunCommercialBreak()` is true when `lastRunEndState` is `'gameover'` or `'victory'` (not `'surrender'`).  
+User clicks **Meditate Again** → `beginNewRun()` → `runCommercialBreak()` before the new run.
+
+**Never:** first **Start Meditation**, or **Surrender** back to menu.
 
 ---
 

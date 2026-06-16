@@ -11,7 +11,7 @@ For a shorter per-host checklist during packaging, see [PORTAL_QA.md](./PORTAL_Q
 
 ## 0. One-line brief (paste to New Agent)
 
-> Build HTML5 game with Vite `base: './'`, one adapter per portal (Poki / CrazyGames / GamePix), portal mode instant guest play, ads **only on restart** (never first Start), audio **after user gesture**, storage with try/catch plus SDK cloud save where claimed. Package ZIP with **forward slashes** (use `tar -a -cf` on Windows, never `Compress-Archive`). **CrazyGames uploads loose files from `dist/`**; itch / Poki / GamePix use ZIP. **GamePix**: fit **800×450 iframe** (no scroll), dashboard title = in-game title (ASCII `-`), inject `gamepix.js` script in GamePix ZIP for SDK scan. Generate marketing assets per portal size spec. Test `?platform=` before submit. Ship **itch first**, then GamePix + CrazyGames Basic; Poki after developer account is provisioned.
+> Build HTML5 game with Vite `base: './'`, one adapter per portal (Poki / CrazyGames / GamePix), portal mode instant guest play, no ad on first Start (GamePix: `interstitialAd` on layer ascend + restart), audio **after user gesture**, storage with try/catch plus SDK cloud save where claimed. Package ZIP with **forward slashes** (use `tar -a -cf` on Windows, never `Compress-Archive`). **CrazyGames uploads loose files from `dist/`**; itch / Poki / GamePix use ZIP. **GamePix**: fit **800×450 iframe** (no scroll), title **Emmind 7 Layers** = in-game + dashboard, menu after `gameLoaded`, inject `gamepix.js` in ZIP `<head>`, SDK Toolkit before Submit. Generate marketing assets per portal size spec. Test `?platform=` + `test:gamepix-embed`. Ship **itch first**, then GamePix + CrazyGames Basic; Poki after developer account is provisioned.
 
 ---
 
@@ -73,7 +73,7 @@ For a shorter per-host checklist during packaging, see [PORTAL_QA.md](./PORTAL_Q
 | Milestone | — | `happyTime()` | — |
 | Progress | — | — | `ping('level_complete')`, `ping('game_over')` |
 | Ads | `commercialBreak()` | `ad.requestAd('midgame')` | `interstitialAd()` |
-| **Ad rule** | Only before **restart** after run end | Midgame on restart (Full verifies) | Only Game Over/Victory → **Meditate Again** |
+| **Ad rule** | Only before **restart** after run end | Midgame on restart (Full verifies) | Layer ascend + Game Over/Victory → **Meditate Again** |
 | **Never ad on** | First **Start** | First **Start** | First **Start**, Surrender |
 | Save | localStorage (+ try/catch) | `SDK.data` | `GamePix.localStorage` |
 
@@ -150,22 +150,22 @@ For a shorter per-host checklist during packaging, see [PORTAL_QA.md](./PORTAL_Q
 **Technical**
 
 - `GamePix.game.gameLoading(n)` during boot.
-- `GamePix.game.gameLoaded(callback)` — menu ready **after** callback only.
+- `GamePix.game.gameLoaded(callback)` — **Start menu and button only after callback** (`hostMenuReady` in `main.js`; portal `initPortalSession` defers `enterMenuAfterLogin` until `boot()` finishes `loadingFinished()`).
 - **No** music before Start / before `gameLoaded`.
 - No console `GAMEPIX_LOADED_NOT_CALLED`.
-- `pause` / `resume`: freeze gameplay, touch, audio.
+- `pause` / `resume`: freeze gameplay, touch, audio (including during layer transition / ad).
 - `soundOff` / `soundOn`: mute restore.
-- `ping('level_complete')`, `ping('game_over')`.
-- `interstitialAd()` only on restart after game over/victory.
+- `ping('level_complete')` **after** `interstitialAd()` on layer ascend; `ping('game_over')` on run end.
+- `interstitialAd()`: (1) after layer transition on ascend — `runGamePixLevelCompleteAd()`; (2) on restart after game over/victory — `runCommercialBreak()`.
 - `GamePix.localStorage` for scores.
 - **Embed fit**: GamePix QA uses a **800×450 desktop iframe**. Entire game (canvas + HUD/stats/controls) must fit **without vertical scroll**. Portal builds need a dedicated viewport branch — do **not** reuse standalone desktop `maxH = Math.max(480, …)` (480px canvas overflows a 450px-tall iframe).
-- **SDK visible to scanner**: GamePix build injects `<script src="https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js">` in `index.html` (see `vite.config.js`). Runtime-only load via `bootstrap.js` alone can fail automated “SDK integration” checks even when hooks work in preview.
+- **SDK visible to scanner**: GamePix build injects `<script src="https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js" data-emmind-sdk="gamepix">` in `index.html` (see `vite.config.js`). Runtime-only load via `bootstrap.js` alone can fail automated “SDK integration” checks even when hooks work in preview.
 - **Language**: In-game UI **100% English** on GamePix (no bilingual or Vietnamese overlay text).
 
 **Form quirks**
 
 - Title: allowed chars only — use `-` not em dash `—`, avoid `:`.
-- **Title must match in-game**: dashboard title, `<title>`, and start-menu heading must be **identical** (e.g. `Emmind - 7 Layers of Ascent`). Do not use a different marketing line (e.g. “Center Your Heart”) as the primary in-game title — use it as subtitle only.
+- **Title must match in-game**: dashboard title, `<title>`, and start-menu heading must be **identical** (Emmind GamePix: **`Emmind 7 Layers`** — matches namespace `emmind-7-layers`). Do not use a different marketing line (e.g. “Center Your Heart”) as the primary in-game title — use it as subtitle only.
 - Description: 100–500 chars, original, include controls.
 - Main tag: **Platformer** (or Casual / Arcade).
 - Allow distribution + Desktop + Mobile: **Yes**.
@@ -178,6 +178,8 @@ For a shorter per-host checklist during packaging, see [PORTAL_QA.md](./PORTAL_Q
 **QA**
 
 - Full tab + **800×450 iframe preview** (no scrollbars).
+- `npm run test:gamepix-embed` after `package:gamepix`.
+- **SDK Testing Toolkit** on my.gamepix.com — upload ZIP and pass **before** dashboard Submit.
 - Mobile Both.
 - After rejection fix: re-upload ZIP → **Submit for review** again (not draft-only save).
 
@@ -250,6 +252,14 @@ npm run capture:itch-trailer       # source MP4 for trims
 8. Mobile: QR preview or device — Both orientations
 9. Console: no blocking errors (favicon 404 is cosmetic)
 10. Metadata + assets complete → Submit for review
+
+**GamePix submit order (do not skip):**
+
+```
+npm run package:gamepix → npm run test:gamepix-embed
+→ SDK Testing Toolkit (upload ZIP, pass)
+→ Dashboard: ZIP + icon + cover → Submit for review
+```
 ```
 
 ---
@@ -262,7 +272,7 @@ npm run capture:itch-trailer       # source MP4 for trims
 | Upload ZIP to CrazyGames | “Archive not supported” | Drag-drop `dist/` files |
 | Skip `gameLoaded` / `gameLoadingFinished` | GamePix/Poki auto-reject | Call after boot, before interactive menu |
 | Music before Start | Policy fail | Gesture unlock only |
-| Ad on first Start | Reject | Ads only on restart after run |
+| Ad on first Start | Reject | No ad on first Start; GamePix: `interstitialAd` on layer ascend + restart |
 | External login on portal build | CrazyGames QA fail | Portal mode hides auth; guest only |
 | Tick SDK features not coded | QA mismatch | Tick only what exists (e.g. CG SDK mute) |
 | Invalid title chars (`—`, `:`) | Form reject | Use allowed charset |
@@ -270,7 +280,7 @@ npm run capture:itch-trailer       # source MP4 for trims
 | Desktop iframe taller than viewport | Clipped UI / scroll in GamePix preview | Portal branch: subtract HUD/stats/controls; **no 480px canvas floor** in iframe; `body.portal-mode { overflow: hidden }` |
 | Standalone desktop `maxH = Math.max(480, …)` in portal ZIP | GamePix 800×450 reject — canvas taller than iframe | Separate `isPortalMode` viewport math in `syncGameViewport()` |
 | GamePix SDK only via dynamic `bootstrap.js` | “SDK integration” flag despite working preview | Inject `<script src="...gamepix.js">` in GamePix build HTML; keep `data-emmind-sdk="gamepix"` so bootstrap dedupes |
-| Dashboard title ≠ in-game `<title>` / menu h2 | GamePix title mismatch reject | One string everywhere: ASCII `-`, same as namespace (e.g. `Emmind - 7 Layers of Ascent`) |
+| Dashboard title ≠ in-game `<title>` / menu h2 | GamePix title mismatch reject | One string everywhere on GamePix (Emmind: **`Emmind 7 Layers`**) |
 | Marketing subtitle as in-game h2 (“Center Your Heart”) | Title mismatch vs dashboard | Game title in `<h2>`; tagline in subtitle / portal CSS only |
 | Non-English in-game text (e.g. bilingual layer-7 heading) | Policy / localization reject | 100% English for GamePix; remove secondary-language UI strings |
 | Vague metadata controls | Reject | Desktop + mobile, `key = action` |
@@ -353,7 +363,8 @@ itch (public, embed QA)
 |------|------------|
 | CrazyGames “SDK mute” checkbox | Tick **only** if `soundOff` wired to CrazyGames SDK |
 | CrazyGames “Data Module” | Tick **Yes** only if `SDK.data` used in `storage.js` |
-| GamePix `gameLoaded` | Menu must not accept input until callback runs |
+| GamePix `gameLoaded` | Menu + Start disabled until `loadingFinished()`; portal `enterMenuAfterLogin` only after `gameLoaded` |
+| GamePix layer ascend | `interstitialAd()` in `finishLayerTransition` **before** `ping('level_complete')` — ping alone shows “Wait… resume” overlay |
 | GamePix iframe 800×450 | Test at exact size; portal viewport must not force 480px min canvas height |
 | GamePix title | `<title>`, start overlay `<h2>`, and dashboard form — **same string**, ASCII hyphen |
 | GamePix SDK script in ZIP | `grep gamepix.js dist/index.html` after `npm run package:gamepix` |
@@ -404,9 +415,13 @@ itch (public, embed QA)
 
 ```bash
 npm run package:gamepix
+npm run test:gamepix-embed
+# SDK Testing Toolkit → upload emmind-gamepix.zip → pass
 # Verify:
-#   dist/index.html contains gamepix.js script tag
-#   title is "Emmind - 7 Layers of Ascent" (ASCII hyphen)
+#   dist/index.html contains gamepix.js script tag (data-emmind-sdk="gamepix")
+#   title is "Emmind 7 Layers"
+#   Start menu only after gameLoaded
+#   layer ascend: interstitialAd before ping (no "Wait 4 seconds" overlay)
 #   no Vietnamese / bilingual UI strings in index.html
 ```
 
@@ -421,7 +436,7 @@ Upload `packages/emmind-gamepix.zip` on my.gamepix.com → **Submit for review**
 - [ ] Portal mode: no external login, instant guest play  
 - [ ] SDK init + loading-finished hooks  
 - [ ] `gameplayStart` / `gameplayStop` wired to run state  
-- [ ] Ads only on restart (never first Start)  
+- [ ] Ads: no first Start; GamePix layer ascend + restart (never Surrender)
 - [ ] Audio after user gesture; silent during ads and portal pause  
 - [ ] Storage try/catch + cloud storage on host where claimed  
 - [ ] Mobile Both + desktop tested in host preview  
