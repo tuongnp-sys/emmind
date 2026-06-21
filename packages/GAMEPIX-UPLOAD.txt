@@ -1,0 +1,25 @@
+# GamePix — upload (Emmind)
+
+**File:** `emmind-gamepix.zip`
+
+## Upload
+
+1. https://my.gamepix.com → **SDK Testing Toolkit** → upload ZIP
+2. **Dashboard** `emmind-7-layers` → upload **cùng ZIP** → SDK Integration = **Yes** → Submit
+
+## Scanner (reject "SDK not integrated")
+
+`index.html` phải có **URL chính thức**:
+
+```
+https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js
+```
+
++ inline bridge `GamePix.on.pause` / `gameLoaded` ngay sau script tag.
+
+Build: `npm run package:gamepix` — script tự verify CDN + bridge trong `dist/index.html`.
+
+## Trong game
+
+- **Stop** = surrender, không ping (không overlay Wait)
+- **Game Over / Victory** = `ping('game_over')` + ad khi Meditate Again

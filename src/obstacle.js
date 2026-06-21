@@ -1,4 +1,4 @@
-/** Temptations (tạp niệm) & Holy Scriptures (chánh niệm) per layer */
+/** Temptations (tạp niệm), shadow selves (phản ảnh L7) & Holy Scriptures (chánh niệm) per layer */
 
 import {
   getLayerConfig,
@@ -6,6 +6,7 @@ import {
   MOVEMENT_HORIZONTAL,
   MOVEMENT_COMBINED,
 } from './background.js';
+import { drawMeditatorSilhouette } from './meditator-silhouette.js';
 import { makeRadialSprite } from './render-cache.js';
 
 // Pre-baked glow sprites — radial gradients are scale-invariant, so one sprite
@@ -63,6 +64,12 @@ const LAYER_TEMPLATIONS = {
   6: ['probe', 'dust', 'fake-scroll'],
   7: ['blackhole', 'comet', 'demon'],
 };
+
+/** Layer 7 — player-shaped defilements (phản ảnh). */
+const SHADOW_REGULAR_VARIANTS = ['ego', 'doubt', 'craving'];
+const SHADOW_SPEED_MULT = 1.15;
+const SHADOW_STAGGER_SEC = 0.55;
+const LAYER7_AMBUSH_VARIANTS = ['craving', 'doubt', 'false-gold'];
 
 let nextId = 0;
 
@@ -354,6 +361,98 @@ export class Temptation {
   }
 }
 
+/**
+ * Layer 7 shadow self — same silhouette as the player, wrong palette.
+ * Pulse does not clear; only staggers briefly.
+ */
+export class ShadowMara {
+  /**
+   * @param {number} canvasWidth
+   * @param {number} canvasHeight
+   * @param {object} layerConfig
+   * @param {number} speedMultiplier
+   * @param {{ variant?: string, ambush?: { x: number, y: number, vx: number, vy: number } }} [opts]
+   */
+  constructor(canvasWidth, canvasHeight, layerConfig, speedMultiplier = 1, opts = {}) {
+    this.id = nextId++;
+    this.kind = 'shadow';
+    this.layer = 7;
+    this.variant =
+      opts.variant ||
+      SHADOW_REGULAR_VARIANTS[Math.floor(Math.random() * SHADOW_REGULAR_VARIANTS.length)];
+    this.width = 36;
+    this.height = 48;
+    this.cleared = false;
+    this.staggerTimer = 0;
+    this.scale = 0.92 + Math.random() * 0.14;
+
+    const mult = speedMultiplier * SHADOW_SPEED_MULT;
+    const { vx, vy } = getMovementSpeeds(layerConfig, mult);
+    this.speedX = vx + (Math.random() - 0.5) * 24;
+    this.speedY = vy + (Math.random() - 0.5) * 18;
+
+    if (opts.ambush) {
+      this.x = opts.ambush.x - this.width / 2;
+      this.y = opts.ambush.y - this.height / 2;
+      this.vx = opts.ambush.vx;
+      this.vy = opts.ambush.vy;
+    } else {
+      initEntityMotion(this, layerConfig, canvasWidth, canvasHeight);
+    }
+
+    this._canvasW = canvasWidth;
+    this._canvasH = canvasHeight;
+  }
+
+  update(dt, canvasWidth, canvasHeight) {
+    let moveDt = dt;
+    if (this.staggerTimer > 0) {
+      this.staggerTimer = Math.max(0, this.staggerTimer - dt);
+      moveDt = dt * 0.18;
+    }
+    this.x += this.vx * moveDt;
+    this.y += this.vy * moveDt;
+    this._canvasW = canvasWidth;
+    this._canvasH = canvasHeight;
+  }
+
+  stagger() {
+    this.staggerTimer = SHADOW_STAGGER_SEC;
+  }
+
+  isOffScreen() {
+    const w = this._canvasW || 900;
+    const h = this._canvasH || 520;
+    const pad = 48;
+    return (
+      this.x + this.width < -pad ||
+      this.x > w + pad ||
+      this.y + this.height < -pad ||
+      this.y > h + pad
+    );
+  }
+
+  getBounds() {
+    const pad = 5;
+    return {
+      x: this.x + pad,
+      y: this.y + pad,
+      w: this.width - pad * 2,
+      h: this.height - pad * 2,
+    };
+  }
+
+  draw(ctx) {
+    if (this.cleared) return;
+    const cx = this.x + this.width / 2;
+    const cy = this.y + this.height / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    drawMeditatorSilhouette(ctx, this.variant, { scale: this.scale });
+    ctx.restore();
+  }
+}
+
 /** Chánh niệm — bright golden yellow only */
 export class HolyScripture {
   constructor(canvasWidth, canvasHeight, layerConfig, speedMultiplier = 1) {
@@ -452,21 +551,43 @@ export function clearTemptationsInShockwave(temptations, shockwave) {
   return clearedPositions;
 }
 
+/** Shadows resist Pulse — brief stagger only. */
+export function staggerShadowsInShockwave(shadows, shockwave) {
+  if (!shockwave || shockwave.r <= 0) return 0;
+  let count = 0;
+  for (const s of shadows) {
+    if (s.cleared) continue;
+    if (circleIntersectsRect(shockwave.cx, shockwave.cy, shockwave.r, s.getBounds())) {
+      s.stagger();
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export class WorldManager {
   constructor(canvasWidth, canvasHeight) {
     this.canvasWidth = canvasWidth;
     this.canvasHeight = canvasHeight;
     this.temptations = [];
     this.scriptures = [];
+    this.shadows = [];
     this.temptationTimer = 0.8;
     this.scriptureTimer = 2.2;
+    this.shadowTimer = 5.5;
+    this.ambushTriggered = false;
+    this.falseGoldNearAscendSpawned = false;
   }
 
   reset() {
     this.temptations = [];
     this.scriptures = [];
+    this.shadows = [];
     this.temptationTimer = 0.8;
     this.scriptureTimer = 2.2;
+    this.shadowTimer = 5.5;
+    this.ambushTriggered = false;
+    this.falseGoldNearAscendSpawned = false;
   }
 
   setDimensions(width, height) {
@@ -475,12 +596,40 @@ export class WorldManager {
     this.canvasHeight = height;
   }
 
+  spawnAmbushShadows(w, h, layerConfig, speedMultiplier) {
+    const mult = speedMultiplier * SHADOW_SPEED_MULT;
+    const ambushSets = [
+      { x: -20, y: h * 0.38, vx: 200 * (mult / SHADOW_SPEED_MULT), vy: 55 },
+      { x: w * 0.5, y: -30, vx: (Math.random() < 0.5 ? -1 : 1) * 45, vy: 165 },
+      { x: w + 20, y: h * 0.42, vx: -200 * (mult / SHADOW_SPEED_MULT), vy: 50 },
+    ];
+    for (let i = 0; i < 3; i++) {
+      this.shadows.push(
+        new ShadowMara(w, h, layerConfig, speedMultiplier, {
+          variant: LAYER7_AMBUSH_VARIANTS[i],
+          ambush: ambushSets[i],
+        })
+      );
+    }
+  }
+
+  getLayer7ShadowInterval(layerElapsed, layerDuration) {
+    const progress = layerDuration > 0 ? layerElapsed / layerDuration : 0;
+    if (progress >= 0.75) return 4.2;
+    if (progress >= 0.4) return 6.2;
+    return 8.5;
+  }
+
   update(dt, layer, options = {}) {
     const {
       spawnPaused = false,
       layerElapsed = 0,
       layerDuration = 90,
       speedFactor = 1,
+      practiceScore = 0,
+      practiceTarget = 300,
+      haloEnergy = 0,
+      mindfulnessAscendThreshold = 80,
     } = options;
 
     const layerConfig = getLayerConfig(layer);
@@ -505,17 +654,56 @@ export class WorldManager {
         this.scriptures.push(new HolyScripture(w, h, layerConfig, speedMultiplier));
         this.scriptureTimer = 2.5 + Math.random() * 2;
       }
+
+      if (layer === 7) {
+        this.shadowTimer -= dt;
+
+        if (
+          practiceTarget > 0 &&
+          practiceScore >= practiceTarget * 0.9 &&
+          !this.ambushTriggered
+        ) {
+          this.ambushTriggered = true;
+          this.spawnAmbushShadows(w, h, layerConfig, speedMultiplier);
+        }
+
+        if (
+          haloEnergy >= mindfulnessAscendThreshold - 5 &&
+          haloEnergy < mindfulnessAscendThreshold &&
+          !this.falseGoldNearAscendSpawned
+        ) {
+          this.falseGoldNearAscendSpawned = true;
+          this.shadows.push(
+            new ShadowMara(w, h, layerConfig, speedMultiplier, { variant: 'false-gold' })
+          );
+        }
+
+        if (this.shadowTimer <= 0) {
+          const variant =
+            SHADOW_REGULAR_VARIANTS[
+              Math.floor(Math.random() * SHADOW_REGULAR_VARIANTS.length)
+            ];
+          this.shadows.push(
+            new ShadowMara(w, h, layerConfig, speedMultiplier, { variant })
+          );
+          const base = this.getLayer7ShadowInterval(layerElapsed, layerDuration);
+          this.shadowTimer = (base + Math.random() * 1.8) * spawnIntervalFactor;
+        }
+      }
     }
 
     for (const t of this.temptations) t.update(dt, w, h);
     for (const s of this.scriptures) s.update(dt, w, h);
+    for (const sh of this.shadows) sh.update(dt, w, h);
 
     this.temptations = this.temptations.filter((t) => !t.isOffScreen() && !t.cleared);
     this.scriptures = this.scriptures.filter((s) => !s.isOffScreen() && !s.collected);
+    this.shadows = this.shadows.filter((sh) => !sh.isOffScreen() && !sh.cleared);
   }
 
   draw(ctx) {
     for (const s of this.scriptures) s.draw(ctx);
+    for (const sh of this.shadows) sh.draw(ctx);
     for (const t of this.temptations) t.draw(ctx);
   }
 

@@ -1,4 +1,5 @@
 import { makeRadialSprite } from './render-cache.js';
+import { drawMeditatorSilhouette } from './meditator-silhouette.js';
 
 // Glow sprites baked once — per-frame createRadialGradient is slow on mobile GPUs.
 let auraSprite = null;
@@ -349,31 +350,9 @@ export class Player {
 
     ctx.save();
     ctx.translate(cx, cy);
-
-    // Fixed local-space gradient — create once and reuse every frame.
-    if (!this._bodyGrad) {
-      const g = ctx.createLinearGradient(0, -24, 0, 24);
-      g.addColorStop(0, '#e8eef2');
-      g.addColorStop(0.5, '#b8c8d4');
-      g.addColorStop(1, '#7eb89a');
-      this._bodyGrad = g;
-    }
-
-    ctx.fillStyle = this._bodyGrad;
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 14, 20, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = this.protectiveCharges > 0 ? '#ffe566' : '#d4b896';
-    ctx.beginPath();
-    ctx.arc(0, -14, 12, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = `rgba(255,230,120,${this.protectiveCharges > 0 ? 0.55 : 0.45})`;
-    ctx.beginPath();
-    ctx.arc(0, -14, 18, 0, Math.PI * 2);
-    ctx.fill();
-
+    drawMeditatorSilhouette(ctx, 'player', {
+      protectiveCharges: this.protectiveCharges,
+    });
     ctx.restore();
   }
 }

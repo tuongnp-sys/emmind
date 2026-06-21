@@ -71,15 +71,18 @@ Reference: [GamePix SDK Bible](http://gpxprj.blob.core.windows.net/api/index.htm
 - [ ] `GamePix.game.gameLoaded(callback)` — menu + Start only after callback (`hostMenuReady`)
 - [ ] No music before **Start Meditation** / before `gameLoaded`
 - [ ] Console: no `GAMEPIX_LOADED_NOT_CALLED` errors
-- [ ] `GamePix.on.pause` — gameplay, touch, and audio freeze
-- [ ] `GamePix.on.resume` — game resumes correctly
-- [ ] `GamePix.on.soundOff` / `soundOn` — mute and restore layer music
-- [ ] Layer ascend: `interstitialAd()` **before** `ping('level_complete')` (avoids “Wait… resume” overlay)
+- [ ] `GamePix.on.pause` / `resume` / `soundOff` / `soundOn` — handlers bound at boot; manual toolkit Pause/Resume/Open Tab pass
+- [ ] `GamePix.updateScore` on score changes; `GamePix.updateLevel` on layer ascend + boot
+- [ ] `GamePix.happyMoment()` on layer ascend / enlightenment (`happyTime()` adapter)
+- [ ] `GamePix.lang()` read at boot (English UI; multilang optional)
+- [ ] `GamePix.localStorage` — init waits for SDK storage API; profile/leaderboard persist
+- [ ] Layer ascend: `interstitialAd()` only — **no** `ping('level_complete')` (avoids “Wait… resume” overlay)
 - [ ] `GamePix.game.ping('game_over')` on run end (game over / victory / surrender)
 - [ ] `GamePix.interstitialAd()` after **Game Over** or **Victory** → **Meditate Again** (restart)
 - [ ] No interstitial on first **Start Meditation** or after **Surrender**
 - [ ] Scores persist via `GamePix.localStorage` on GamePix host
 - [ ] Mobile portrait + landscape playable
+- [ ] `npm run test:gamepix-embed` — embed + SDK handler checks (pause/resume/gameLoaded/updateScore/updateLevel)
 - [ ] SDK Testing Toolkit pass (upload ZIP before dashboard Submit)
 
 ---

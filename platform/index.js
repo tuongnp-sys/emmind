@@ -3,7 +3,7 @@ import * as crazygames from './crazygames.js';
 import * as poki from './poki.js';
 import * as gamepix from './gamepix.js';
 import { loadPlatformSdk } from './bootstrap.js';
-import { initPlatformStorage } from './storage.js';
+import { initPlatformStorage, isGamePixStorageActive } from './storage.js';
 
 function detectPlatformId() {
   const params = new URLSearchParams(window.location.search);
@@ -19,8 +19,17 @@ function detectPlatformId() {
   return 'local';
 }
 
+/** GamePix ZIP must use gamepix adapter on any host (review CDN may not include "gamepix" in hostname). */
+function resolvePlatformId() {
+  const builtIn = import.meta.env.VITE_PORTAL_TARGET;
+  if (builtIn === 'gamepix' || builtIn === 'poki' || builtIn === 'crazygames') {
+    return builtIn;
+  }
+  return detectPlatformId();
+}
+
 const adapters = { local, crazygames, poki, gamepix };
-const activeId = detectPlatformId();
+const activeId = resolvePlatformId();
 const active = adapters[activeId] || local;
 
 export const platformId = activeId;
@@ -34,9 +43,13 @@ export const gameplayStart = active.gameplayStart;
 export const gameplayStop = active.gameplayStop;
 export const commercialBreak = active.commercialBreak;
 export const happyTime = active.happyTime;
+export const reportScore = active.reportScore;
+export const reportLevel = active.reportLevel;
+export const readGamePixLang = active.readGamePixLang;
 export const pingLevelComplete = active.pingLevelComplete;
 export const pingGameOver = active.pingGameOver;
 export const registerGamePixHandlers = gamepix.registerGamePixHandlers;
+export const gamePixProbe = gamepix.gamePixProbe;
 
 export async function platformBootstrap(onProgress) {
   onProgress?.(5);
@@ -49,6 +62,9 @@ export async function platformBootstrap(onProgress) {
   onProgress?.(30);
 
   await initPlatformStorage(activeId);
+  if (activeId === 'gamepix') {
+    gamepix.gamePixProbe.storageReady = isGamePixStorageActive();
+  }
   onProgress?.(40);
 
   return sdkOk;

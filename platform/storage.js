@@ -121,8 +121,21 @@ export const PROFILE_KEY_EXPORT = 'emmind_profile';
 export const LEADERBOARD_KEY_EXPORT = 'emmind_leaderboard';
 export const USERNAME_KEY_EXPORT = 'emmind_username';
 
+async function waitForGamePixStorage(timeoutMs = 12000) {
+  if (gamePixStorage()) return true;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (gamePixStorage()) return true;
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  return Boolean(gamePixStorage());
+}
+
 /** Call after platform SDK init. */
 export async function initPlatformStorage(platformId) {
+  if (platformId === 'gamepix') {
+    await waitForGamePixStorage();
+  }
   useCrazyGamesData = platformId === 'crazygames' && Boolean(crazyData());
   useGamePixStorage = platformId === 'gamepix' && Boolean(gamePixStorage());
 
@@ -131,7 +144,16 @@ export async function initPlatformStorage(platformId) {
   }
   if (useGamePixStorage) {
     migrateLocalKeysToGamePix();
+    try {
+      gamePixStorage()?.setItem('emmind_sdk_probe', String(Date.now()));
+    } catch {
+      /* ignore */
+    }
   }
+}
+
+export function isGamePixStorageActive() {
+  return useGamePixStorage;
 }
 
 export function isUsingCloudStorage() {

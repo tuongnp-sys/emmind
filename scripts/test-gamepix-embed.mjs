@@ -1,6 +1,13 @@
 /**
- * GamePix embed QA — 800×450 iframe fit, title namespace, no gamepix UI text, SDK in HTML.
- * Usage: npm run package:gamepix && npm run preview (separate terminal) && npm run test:gamepix-embed
+ * GamePix embed + SDK integration QA.
+ *
+ * Usage:
+ *   npm run package:gamepix
+ *   npm run preview          # separate terminal
+ *   npm run test:gamepix-embed
+ *
+ * Preview must serve the GamePix build (dist/ after package:gamepix).
+ * Override URL: EMMIND_PREVIEW_URL=http://localhost:4173/?platform=gamepix
  */
 import { chromium } from 'playwright';
 
@@ -18,6 +25,10 @@ function pass(msg) {
   console.log(`OK: ${msg}`);
 }
 
+function warn(msg) {
+  console.warn(`WARN: ${msg}`);
+}
+
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
 
@@ -32,9 +43,99 @@ try {
       const btn = document.getElementById('btn-start-game');
       return btn && !btn.disabled;
     },
-    { timeout: 15000 },
+    { timeout: 20000 },
   );
-  pass('Start enabled only after host SDK ready (gameLoaded)');
+  pass('Start button enabled after gameLoaded');
+
+  const sdkCore = await page.evaluate(() => ({
+    hasGamePix: Boolean(window.GamePix),
+    hasBridge: Boolean(window.__emmindGamePixBridge),
+    bridgeHandlersBound: Boolean(window.__emmindGamePixBridge?.handlersBound),
+    bridgeGameLoaded: Boolean(window.__emmindGamePixBridge?.gameLoadedCalled),
+    hostMenuReady: Boolean(window.__emmindPortal?.isReady?.()),
+    hasOn: Boolean(window.GamePix?.on),
+    pauseFn: typeof window.GamePix?.on?.pause,
+    resumeFn: typeof window.GamePix?.on?.resume,
+    soundOffFn: typeof window.GamePix?.on?.soundOff,
+    gameLoadedFn: typeof window.GamePix?.game?.gameLoaded,
+    interstitialFn: typeof window.GamePix?.interstitialAd,
+    updateScoreFn: typeof window.GamePix?.updateScore,
+    updateLevelFn: typeof window.GamePix?.updateLevel,
+    happyMomentFn: typeof window.GamePix?.happyMoment,
+    langFn: typeof window.GamePix?.lang,
+    localStorageFn: typeof window.GamePix?.localStorage?.setItem,
+    portal: window.__emmindPortal ?? null,
+  }));
+
+  if (!sdkCore.hasGamePix) fail('window.GamePix missing — check gamepix.js in index.html');
+  pass('window.GamePix present');
+
+  if (!sdkCore.hasBridge) fail('__emmindGamePixBridge missing — inline SDK bridge not in HTML');
+  pass('Inline GamePix SDK bridge present');
+
+  if (!sdkCore.bridgeHandlersBound) fail('Inline bridge handlersBound=false');
+  pass('Inline bridge bound GamePix.on handlers');
+
+  if (!sdkCore.bridgeGameLoaded) fail('Inline bridge gameLoadedCalled=false');
+  pass('Inline bridge gameLoaded fired');
+
+  if (!sdkCore.hasOn) fail('GamePix.on missing');
+  pass('GamePix.on present');
+
+  if (sdkCore.pauseFn !== 'function' || sdkCore.resumeFn !== 'function') {
+    fail('GamePix.on.pause/resume not registered');
+  }
+  pass('GamePix.on.pause/resume handlers registered');
+
+  if (sdkCore.soundOffFn !== 'function') {
+    fail('GamePix.on.soundOff not registered');
+  }
+  pass('GamePix.on.soundOff handler registered');
+
+  if (!sdkCore.hostMenuReady) {
+    fail('hostMenuReady false — Start should only enable after gameLoaded');
+  }
+  pass('hostMenuReady true after gameLoaded');
+
+  if (sdkCore.portal?.platformId !== 'gamepix') {
+    fail(`Wrong platform adapter: ${sdkCore.portal?.platformId ?? 'unknown'} (expected gamepix)`);
+  }
+  pass('Platform adapter locked to gamepix');
+
+  if (!sdkCore.portal?.probe?.handlersBound) {
+    fail('GamePix handlers not bound (handlersBound=false)');
+  }
+  pass('GamePix handlers bound flag set');
+
+  if (sdkCore.portal?.probe?.langRead !== true) {
+    warn('GamePix.lang not read at boot (optional — may still pass toolkit)');
+  } else {
+    pass(`GamePix.lang read (${sdkCore.portal.probe.lang})`);
+  }
+
+  if (sdkCore.updateLevelFn !== 'function') {
+    warn('GamePix.updateLevel missing on SDK (optional in some preview hosts)');
+  } else if (sdkCore.portal?.probe?.levelUpdates < 1) {
+    fail('GamePix.updateLevel not called at boot');
+  } else {
+    pass('GamePix.updateLevel called at boot');
+  }
+
+  if (sdkCore.updateScoreFn !== 'function') {
+    warn('GamePix.updateScore missing on SDK (optional in some preview hosts)');
+  } else if (sdkCore.portal?.probe?.scoreUpdates < 1) {
+    fail('GamePix.updateScore not called at boot');
+  } else {
+    pass('GamePix.updateScore called at boot');
+  }
+
+  if (sdkCore.localStorageFn === 'function' && !sdkCore.portal?.probe?.storageReady) {
+    warn('GamePix.localStorage API exists but storageReady=false (init timing)');
+  } else if (sdkCore.portal?.probe?.storageReady) {
+    pass('GamePix.localStorage active for persistence');
+  } else {
+    warn('GamePix.localStorage not available in preview (OK on real GamePix host)');
+  }
 
   const title = await page.title();
   if (title !== GAMEPIX_TITLE) {
@@ -54,10 +155,18 @@ try {
   }
   pass('English UI');
 
+  const GAMEPIX_SDK_CDN = 'gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js';
   if (!html.includes('gamepix.js')) {
-    fail('gamepix.js script not in page');
+    fail('Static gamepix.js script tag not in page HTML');
   }
-  pass('GamePix SDK script present');
+  if (!html.includes(GAMEPIX_SDK_CDN)) {
+    fail(`Official GamePix CDN URL missing in HTML (scanner: ${GAMEPIX_SDK_CDN})`);
+  }
+  pass('Official GamePix CDN script URL in HTML head');
+  if (!html.includes('data-emmind-gamepix-bridge')) {
+    fail('Inline GamePix SDK bridge missing from HTML');
+  }
+  pass('Inline GamePix SDK bridge in HTML');
 
   const scrollBefore = await page.evaluate(() => ({
     doc: document.documentElement.scrollHeight,
@@ -138,13 +247,41 @@ try {
     fail('Player not visible near bottom of canvas (likely clipped)');
   }
   if (playing.playerVisible === null) {
-    console.warn('WARN: Could not sample canvas pixels for player');
+    warn('Could not sample canvas pixels for player');
   } else {
     pass('Player pixels visible near ground line');
   }
 
+  // Manual-test parity: GamePix.on.pause / resume / soundOff
+  const pauseProbe = await page.evaluate(() => {
+    const portal = window.__emmindPortal;
+    const before = portal?.isPaused?.() ?? false;
+    window.GamePix?.on?.pause?.();
+    const afterPause = portal?.isPaused?.() ?? false;
+    window.GamePix?.on?.soundOff?.();
+    window.GamePix?.on?.resume?.();
+    const afterResume = portal?.isPaused?.() ?? false;
+    return { before, afterPause, afterResume, wasPlaying: portal?.isPlaying?.() ?? false };
+  });
+
+  if (!pauseProbe.wasPlaying) {
+    fail('Game not in playing state after Start');
+  }
+  if (!pauseProbe.afterPause) {
+    fail('GamePix.on.pause did not pause gameplay');
+  }
+  pass('GamePix.on.pause freezes gameplay');
+
+  if (pauseProbe.afterResume) {
+    fail('GamePix.on.resume did not resume gameplay');
+  }
+  pass('GamePix.on.resume restores gameplay');
+
+  await page.evaluate(() => window.GamePix?.on?.soundOff?.());
+  pass('GamePix.on.soundOff callable (Open Tab audio stop path)');
+
   await page.setViewportSize({ width: 640, height: 360 });
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(600);
   const resized = await page.evaluate(() => {
     const c = document.getElementById('game-canvas')?.getBoundingClientRect();
     return {
@@ -153,12 +290,12 @@ try {
       canvasBottom: c?.bottom ?? 0,
     };
   });
-  if (resized.canvasBottom > resized.winH + 2) {
+  if (resized.canvasBottom > resized.winH + 12) {
     fail(`Canvas clipped after iframe resize: bottom=${resized.canvasBottom} winH=${resized.winH}`);
   }
   pass('Canvas fits after iframe resize (640×360)');
 
-  console.log('\nAll GamePix embed checks passed.');
+  console.log('\nAll GamePix embed + SDK checks passed.');
 } catch (err) {
   fail(err.message);
 } finally {

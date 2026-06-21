@@ -1,0 +1,64 @@
+# itch.io — upload (Emmind)
+
+Trang game: https://tuongnp.itch.io/emmind
+
+Mở **Edit project** → làm lần lượt 4 phần dưới → **Save**.
+
+---
+
+## 1. Cover + Screenshots
+
+Thư mục: `packages/itch-marketing/`
+
+| File | Upload vào |
+|------|------------|
+| `cover-630x500.png` | **Cover image** |
+| `screenshot-02-layer1-gameplay.png` | Screenshot #1 |
+| `screenshot-04-layer3-flight.png` | Screenshot #2 |
+| `screenshot-01-start-menu.png` | Screenshot #3 |
+| `screenshot-03-hud-and-canvas.png` | Screenshot #4 |
+
+Thứ tự gallery: **02 → 04 → 01 → 03** (gameplay trước).
+
+---
+
+## 2. Trailer (YouTube)
+
+1. Upload `packages/itch-marketing/trailer-45s.mp4` lên YouTube
+2. **Visibility:** Unlisted
+3. Copy title + description từ `packages/itch-marketing/youtube-upload.txt`
+4. Paste link YouTube vào itch → **Gameplay video or trailer**
+
+---
+
+## 3. Description (nếu chưa điền)
+
+Copy toàn bộ nội dung từ `packages/itch-description.md` → **Description**.
+
+---
+
+## 4. Game ZIP (HTML)
+
+File: `packages/emmind-itch.zip` (~7 MB)
+
+1. Tab **Uploads** → **Upload new file** → chọn ZIP
+2. Kind: **HTML**
+3. Bật **This file will be played in the browser**
+4. Embed size: **900 × 520** (hoặc full-width responsive)
+5. Đặt làm file chính nếu có nhiều bản upload
+
+---
+
+## 5. Theme (tùy chọn)
+
+Toolbar trang project → **Theme editor** → màu nền tối, font đơn giản.
+
+---
+
+## Regenerate (nếu cần build lại)
+
+```
+npm run capture:itch-marketing
+npm run capture:itch-trailer
+npm run package:itch
+```

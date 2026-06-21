@@ -115,8 +115,8 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 
 | Issue | Fix |
 |-------|-----|
-| SDK flagged, not integrated | Portal menu only after `loadingFinished()`; `gamepix.js` static in ZIP `<head>` with `data-emmind-sdk="gamepix"` |
-| “Wait. Game will resume in 4 seconds” at layer 2 | `ping('level_complete')` alone triggers SDK test pause — call `interstitialAd()` first on layer ascend, then ping |
+| SDK flagged, not integrated | GamePix ZIP locks adapter via `VITE_PORTAL_TARGET=gamepix` (not hostname); menu after `gameLoaded`; `gamepix.js` in ZIP `<head>` |
+| “Wait. Game will resume in 4 seconds” at layer 2 | Do **not** call `ping('level_complete')` on layer ascend — use `interstitialAd()` only; keep `ping('game_over')` on run end |
 
 **Implementation (Emmind):**
 
@@ -124,7 +124,8 @@ Script: `npm run build:gamepix-marketing` (run `npm run preview` first for live 
 |-------|-----------------|
 | Defer portal menu | `initPortalSession()` does not show start overlay; `boot()` calls `enterMenuAfterLogin()` only after `loadingFinished()` |
 | Lock Start until ready | `hostMenuReady` + `syncStartButtonState()` — disabled until `gameLoaded` |
-| Layer ascend ad | `ascendLayer()` sets `pendingLevelCompletePing`; `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → `commercialBreak()` then `pingLevelComplete()` |
+| Force gamepix adapter | `platform/index.js` → `resolvePlatformId()` prefers `import.meta.env.VITE_PORTAL_TARGET` over hostname |
+| Layer ascend ad | `ascendLayer()` sets flag; `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → **`interstitialAd()` only** (no `ping` on ascend — ping triggers QA wait overlay) |
 | Restart ad | `beginNewRun()` → `runCommercialBreak()` when `lastRunEndState` is game over/victory |
 | SDK inject | `vite.config.js` when `VITE_PORTAL_TARGET=gamepix` |
 
@@ -214,11 +215,11 @@ All ads go through `commercialBreak()` → `GamePix.interstitialAd()` in `platfo
 
 **A. Layer ascend** (`platformId === 'gamepix'` only)
 
-1. `ascendLayer()` — does **not** call `pingLevelComplete` immediately; sets `pendingLevelCompletePing`.
+1. `ascendLayer()` — does **not** call `pingLevelComplete`; sets `pendingLevelCompletePing` flag.
 2. Layer transition overlay runs (~2.2s).
-3. `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → `interstitialAd()` then `ping('level_complete')`.
+3. `finishLayerTransition()` → `runGamePixLevelCompleteAd()` → **`interstitialAd()` only**.
 
-Calling `ping` without `interstitialAd` first triggers GamePix review overlay: *“Wait. Game will resume in 4 seconds.”*
+Do **not** call `ping('level_complete')` on ascend — GamePix QA shows *“Wait. Game will resume in 4 seconds.”* Use `ping('game_over')` on run end only.
 
 **B. Restart after run end**
 

@@ -13,8 +13,9 @@ export async function platformInit() {
 
 export function reportLoading() {}
 
-export function loadingFinished() {
+export async function loadingFinished() {
   window.PokiSDK?.gameLoadingFinished?.();
+  return true;
 }
 
 export function gameplayStart() {
@@ -26,6 +27,14 @@ export function gameplayStop() {
 }
 
 export function happyTime() {}
+
+export function reportScore() {}
+
+export function reportLevel() {}
+
+export function readGamePixLang() {
+  return 'en';
+}
 
 export function pingLevelComplete() {}
 

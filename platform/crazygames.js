@@ -18,9 +18,10 @@ export async function platformInit() {
 
 export function reportLoading() {}
 
-export function loadingFinished() {
-  if (!sdkAvailable()) return;
+export async function loadingFinished() {
+  if (!sdkAvailable()) return true;
   window.CrazyGames?.SDK?.game?.sdkGameLoadingStop?.();
+  return true;
 }
 
 export function gameplayStart() {
@@ -36,6 +37,14 @@ export function gameplayStop() {
 export function happyTime() {
   if (!sdkAvailable()) return;
   window.CrazyGames?.SDK?.game?.happyTime?.();
+}
+
+export function reportScore() {}
+
+export function reportLevel() {}
+
+export function readGamePixLang() {
+  return 'en';
 }
 
 export function pingLevelComplete() {}

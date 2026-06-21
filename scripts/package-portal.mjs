@@ -21,6 +21,7 @@ if (target !== 'itch') {
 }
 
 process.chdir(root);
+
 console.log(`[package] building for ${target}...`);
 execSync('npm run build', { stdio: 'inherit', env });
 
@@ -57,6 +58,24 @@ const fileCount = countFiles(dist);
 if (fileCount > 1000) {
   console.error(`FAIL: ${fileCount} files exceeds itch.io 1000 file limit.`);
   process.exit(1);
+}
+
+if (target === 'gamepix') {
+  const indexHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+  const cdn = 'gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js';
+  if (!indexHtml.includes(cdn)) {
+    console.error(`FAIL: dist/index.html missing official GamePix SDK URL (${cdn})`);
+    process.exit(1);
+  }
+  if (!indexHtml.includes('data-emmind-gamepix-bridge')) {
+    console.error('FAIL: dist/index.html missing inline GamePix SDK bridge');
+    process.exit(1);
+  }
+  if (!indexHtml.includes('GamePix.on.pause')) {
+    console.error('FAIL: dist/index.html missing literal GamePix.on.pause in bridge');
+    process.exit(1);
+  }
+  console.log('[package] GamePix scanner checks: CDN script + inline bridge OK');
 }
 
 console.log(`\n[package] wrote ${outPath} (${fileCount} files)`);

@@ -17,6 +17,7 @@ import { Player } from './player.js';
 import {
   WorldManager,
   clearTemptationsInShockwave,
+  staggerShadowsInShockwave,
   circleIntersectsRect,
   rectsOverlap,
 } from './obstacle.js';
@@ -53,9 +54,12 @@ import {
   gameplayStop,
   commercialBreak,
   happyTime,
+  reportScore,
+  reportLevel,
   pingLevelComplete,
   pingGameOver,
   registerGamePixHandlers,
+  gamePixProbe,
 } from '../platform/index.js';
 
 /** Emmind standalone — no backend, no energy gate, no commerce. */
@@ -265,6 +269,7 @@ let animFrameId = null;
 let layerTransitionTimer = 0;
 let layerTransitionAscending = false;
 let pendingLayerUp = false;
+let layer7AmbushAnnounced = false;
 let enlightenmentPulse = 0;
 let hitFlashTimer = 0;
 let suppressCanvasClickUntil = 0;
@@ -1199,6 +1204,7 @@ function resetRunVariables() {
   player?.setEnlightenment(0);
   player?.clearCosmicDrift();
   pendingLayerUp = false;
+  layer7AmbushAnnounced = false;
   layerTransitionTimer = 0;
   layerTransitionAscending = false;
   pendingLevelCompletePing = null;
@@ -1305,6 +1311,7 @@ function addScore(amount, options = {}) {
     const label = mult > 1 ? `+${gained} x${mult}` : `+${gained}`;
     floatingTexts.spawn(options.x, options.y, label, options.kind || 'score');
   }
+  if (platformId === 'gamepix') reportScore(score);
   return gained;
 }
 
@@ -1745,6 +1752,10 @@ function enterPlayingMode(token) {
   resetTouchInputForModeChange();
   syncTouchLayout();
   gameplayStart();
+  if (platformId === 'gamepix') {
+    reportLevel(currentLayer);
+    reportScore(score);
+  }
 }
 
 function shouldRunCommercialBreak() {
@@ -1775,11 +1786,10 @@ async function runCommercialBreak() {
   }
 }
 
-/** GamePix level ascend: interstitialAd then ping (not ping alone — avoids "Wait… resume" test overlay). */
+/** GamePix layer ascend: interstitialAd only (ping triggers "Wait… resume" overlay in QA). */
 async function runGamePixLevelCompleteAd() {
   if (gamePixLevelAdInProgress || !pendingLevelCompletePing) return;
   gamePixLevelAdInProgress = true;
-  const payload = pendingLevelCompletePing;
   pendingLevelCompletePing = null;
 
   stopGameAudio();
@@ -1789,7 +1799,6 @@ async function runGamePixLevelCompleteAd() {
 
   try {
     await commercialBreak();
-    pingLevelComplete(payload.score, payload.layer, {});
   } finally {
     gamePixLevelAdInProgress = false;
     if (isPlaying()) {
@@ -1871,7 +1880,7 @@ function showSurrenderScreen() {
   announceGame(`A moment of rest. ${surrenderMessage.textContent} Final score: ${score}.`);
 }
 
-function finishRun({ victory = false, surrender = false, reason = '' } = {}) {
+function finishRun({ victory = false, surrender = false, reason = '', skipPing = false } = {}) {
   enlightenmentMode = false;
   enlightenmentOverlayTimer = 0;
   unbindEnlightenmentClick();
@@ -1894,7 +1903,9 @@ function finishRun({ victory = false, surrender = false, reason = '' } = {}) {
 
   lastRunEndState = victory ? 'victory' : surrender ? 'surrender' : 'gameover';
 
-  pingGameOver(score, currentLayer, { unlocked: newAchievements });
+  if (!skipPing) {
+    pingGameOver(score, currentLayer, { unlocked: newAchievements });
+  }
 
   if (victory) {
     setGameState(GameState.VICTORY);
@@ -1951,8 +1962,13 @@ function endGame(reason, { victory = false } = {}) {
   finishRun({ victory, reason });
 }
 
+/** GamePix: surrender ends run without ping (avoids QA wait overlay on Stop). */
 function handleStopMeditation() {
   if (!isPlaying()) return;
+  if (platformId === 'gamepix') {
+    finishRun({ surrender: true, skipPing: true });
+    return;
+  }
   finishRun({ surrender: true });
 }
 
@@ -1973,6 +1989,11 @@ function processShockwaveClears() {
   const wave = player.getShockwaveCircle();
   if (!wave || !world) return;
   const clearedPositions = clearTemptationsInShockwave(world.temptations, wave);
+  const staggered = staggerShadowsInShockwave(world.shadows, wave);
+  if (staggered > 0 && clearedPositions.length === 0) {
+    const c = player.getCenter();
+    floatingTexts.spawn(c.x, c.y - 20, 'Shadow holds', 'default');
+  }
   if (clearedPositions.length > 0) {
     const toScore = Math.min(
       clearedPositions.length,
@@ -2020,6 +2041,7 @@ function ascendLayer() {
   announceGame(`Layer ascended. ${getLayerName(currentLayer)}. +${ascendBonus} focus.`);
   happyTime();
   if (platformId === 'gamepix') {
+    reportLevel(currentLayer);
     pendingLevelCompletePing = { score, layer: currentLayer };
   } else {
     pingLevelComplete(score, currentLayer, {});
@@ -2148,8 +2170,19 @@ function processEnlightenmentCollisions() {
     floatingTexts.spawn(px, py, 'Dissolved', 'halo');
   }
 
+  for (const sh of world.shadows) {
+    if (sh.cleared) continue;
+    if (!circleIntersectsRect(c.x, c.y, r, sh.getBounds())) continue;
+    sh.cleared = true;
+    const px = sh.x + sh.width / 2;
+    const py = sh.y + sh.height / 2;
+    particles?.spawnBurst(px, py, 'ripple', { count: 12 });
+    floatingTexts.spawn(px, py, 'Released', 'halo');
+  }
+
   world.temptations = world.temptations.filter((t) => !t.cleared && !t.isOffScreen());
   world.scriptures = world.scriptures.filter((s) => !s.collected && !s.isOffScreen());
+  world.shadows = world.shadows.filter((sh) => !sh.cleared && !sh.isOffScreen());
 }
 
 function showLayerTransition(layer, descending = false) {
@@ -2214,6 +2247,73 @@ function updateLayerTransitionState(dt) {
   }
 
   return true;
+}
+
+function handleShadowCollision(shadow) {
+  if (!isPlaying() || isEnlightenment() || isPaused) return;
+  shadow.cleared = true;
+
+  const c = player.getCenter();
+  const isFalseGold = shadow.variant === 'false-gold';
+
+  hitFlashTimer = HIT_FLASH_DURATION;
+  player.invincible = 1.2;
+
+  if (protectiveCharges > 0) {
+    const lost = Math.min(protectiveCharges, 1 + Math.floor(Math.random() * 2));
+    protectiveCharges = Math.max(0, protectiveCharges - lost);
+    player.setProtectiveCharges(protectiveCharges);
+    particles?.spawnBurst(c.x, c.y, 'shieldPop');
+    floatingTexts.spawn(c.x, c.y - 10, '-Shield', 'halo');
+    loseMindfulness(MINDFULNESS_HIT_SHIELD, { x: c.x, y: c.y - 8 });
+    playSfx('duc');
+    announceGame(
+      isFalseGold
+        ? 'False light — your shield met a reflection, not scripture.'
+        : protectiveCharges > 0
+          ? `Your shield softens — stay present. ${protectiveCharges} shield layer${protectiveCharges > 1 ? 's' : ''} remain.`
+          : 'Your shield has dissolved — breathe, you are still whole.'
+    );
+    return;
+  }
+
+  playSfx('duc');
+  const mindfulnessLoss = isFalseGold
+    ? MINDFULNESS_HIT_DIRECT + 15
+    : MINDFULNESS_HIT_DIRECT;
+  loseMindfulness(mindfulnessLoss, { x: c.x, y: c.y - 8 });
+  scriptureCombo = 0;
+  particles?.spawnBurst(c.x, c.y, 'dull');
+
+  downgradeStrikes += 1;
+  announceGame(
+    isFalseGold
+      ? `Not scripture — a golden reflection. Gentle reminders: ${downgradeStrikes} of ${MAX_DOWNGRADE_STRIKES}.`
+      : `A shadow of yourself arose — return to the breath. Gentle reminders: ${downgradeStrikes} of ${MAX_DOWNGRADE_STRIKES}.`
+  );
+
+  if (downgradeStrikes >= MAX_DOWNGRADE_STRIKES) {
+    endGame('Your ascent pauses here. Breathe with kindness — each return is a gift.');
+    return;
+  }
+
+  if (currentLayer > 1) {
+    currentLayer -= 1;
+    background.setLayer(currentLayer);
+    player.resetPosition();
+    world?.reset();
+    const layer = currentLayer;
+    const token = sessionToken;
+    window.setTimeout(() => {
+      if (!isSessionActive(token) || !isPlaying()) return;
+      playLayerMusic(layer);
+      showLayerTransition(layer, true);
+    }, DOWNGRADE_LAYER_AUDIO_DELAY_MS);
+  } else {
+    resetLayerTimer();
+    world?.reset();
+    announceGame(getLayerDescendMessage(1));
+  }
 }
 
 function handleTemptationCollision() {
@@ -2377,7 +2477,23 @@ function gameLoop(timestamp) {
     layerElapsed,
     layerDuration,
     speedFactor: getMobileObstacleSpeedFactor() * layerSpeed,
+    practiceScore,
+    practiceTarget,
+    haloEnergy,
+    mindfulnessAscendThreshold: MINDFULNESS_ASCEND_THRESHOLD,
   });
+
+  if (
+    currentLayer === 7 &&
+    isPlaying() &&
+    !inEnlightenment &&
+    world.ambushTriggered &&
+    !layer7AmbushAnnounced
+  ) {
+    layer7AmbushAnnounced = true;
+    announceGame('Three reflections rush in — stay with your breath.');
+  }
+
   floatingTexts.update(dt);
 
   if (!inLayerTransition) {
@@ -2409,6 +2525,15 @@ function gameLoop(timestamp) {
         if (t.cleared) continue;
         if (player.invincible <= 0 && rectsOverlap(playerBounds, t.getBounds())) {
           handleTemptationCollision();
+          if (!isPlaying()) return;
+          break;
+        }
+      }
+
+      for (const sh of world.shadows) {
+        if (sh.cleared) continue;
+        if (player.invincible <= 0 && rectsOverlap(playerBounds, sh.getBounds())) {
+          handleShadowCollision(sh);
           if (!isPlaying()) return;
           break;
         }
@@ -2742,11 +2867,9 @@ function syncGamePixTitle() {
 function bindPortalPauseHandlers() {
   registerGamePixHandlers({
     onPause: () => {
-      if (isPlaying() || layerTransitionTimer > 0 || gamePixLevelAdInProgress) {
-        syncTouchControls(false);
-        if (!isPaused) setPaused(true);
-      }
+      syncTouchControls(false);
       stopGameAudio();
+      if (isPlaying() && !isPaused) setPaused(true);
     },
     onResume: () => {
       if (gamePixLevelAdInProgress) return;
@@ -2760,6 +2883,17 @@ function bindPortalPauseHandlers() {
     },
     onSoundOff: () => stopGameAudio(),
   });
+}
+
+function exposeGamePixPortalProbe() {
+  if (platformId !== 'gamepix') return;
+  window.__emmindPortal = {
+    platformId,
+    isReady: () => hostMenuReady,
+    isPaused: () => isPaused,
+    isPlaying: () => isPlaying(),
+    probe: gamePixProbe,
+  };
 }
 
 async function boot() {
@@ -2784,12 +2918,28 @@ async function boot() {
   reportLoading(65);
   await initSession();
   reportLoading(85);
-  await preloadAudioAssets();
-  reportLoading(100);
-  await loadingFinished();
-  hostMenuReady = true;
-  if (isPortalMode && currentUser) {
+
+  if (platformId === 'gamepix') {
+    const sdkReady = await loadingFinished();
+    hostMenuReady = sdkReady;
+    exposeGamePixPortalProbe();
+    if (!sdkReady) {
+      console.error('[Emmind] GamePix gameLoaded failed — Start stays locked');
+      if (btnStartGame) btnStartGame.textContent = 'Loading failed — refresh';
+    }
+    reportLoading(100);
+    void preloadAudioAssets();
+  } else {
+    await preloadAudioAssets();
+    reportLoading(100);
+    hostMenuReady = await loadingFinished();
+    exposeGamePixPortalProbe();
+  }
+
+  if (isPortalMode && currentUser && hostMenuReady) {
     await enterMenuAfterLogin();
+  } else if (isPortalMode && currentUser && !hostMenuReady) {
+    syncStartButtonState();
   }
   console.log('[Emmind] Ready. Platform:', platformId, 'portal:', isPortalMode);
 }

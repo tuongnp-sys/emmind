@@ -1,18 +1,20 @@
 # itch.io marketing assets
 
-Upload these on **Edit project**.
+Upload these on **Edit project** → cover / screenshots gallery.
 
 | File | Use on itch.io |
 |------|----------------|
 | `cover-630x500.png` | **Cover image** (630×500) |
-| `screenshot-02-layer1-gameplay.png` | Screenshot #1 |
-| `screenshot-04-layer3-flight.png` | Screenshot #2 |
-| `screenshot-01-start-menu.png` | Screenshot #3 |
-| `screenshot-03-hud-and-canvas.png` | Screenshot #4 |
-| `trailer-45s.mp4` | Upload to **YouTube (Unlisted)** → paste link in **Gameplay video or trailer** |
+| `screenshot-01-start-menu.png` | Screenshot — start overlay |
+| `screenshot-02-layer1-gameplay.png` | Screenshot — Layer 1 |
+| `screenshot-03-hud-and-canvas.png` | Screenshot — HUD + canvas |
+| `screenshot-04-layer3-flight.png` | Screenshot — Layer 3 flight |
+| `trailer-45s.mp4` | YouTube (Unlisted) → paste link in **Gameplay video or trailer** |
 
-**Screenshot gallery order:** 02 → 04 → 01 → 03
+**Suggested gallery order:** 02 → 04 → 01 → 03 (gameplay first).
 
-**Trailer (~50s):** Layer 1 intro + Layer 3 flight. See `youtube-upload.txt` for YouTube title/description.
+Chi tiết upload: `packages/ITCH-UPLOAD.txt`
 
-Regenerate: `npm run capture:itch-marketing` and `npm run capture:itch-trailer`
+Generated from production build (`npm run build:portal`) at 2026-06-17T13:10:53.172Z.
+
+Title on cover: **Emmind — 7 Layers of Ascent**

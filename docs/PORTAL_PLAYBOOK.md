@@ -155,11 +155,11 @@ For a shorter per-host checklist during packaging, see [PORTAL_QA.md](./PORTAL_Q
 - No console `GAMEPIX_LOADED_NOT_CALLED`.
 - `pause` / `resume`: freeze gameplay, touch, audio (including during layer transition / ad).
 - `soundOff` / `soundOn`: mute restore.
-- `ping('level_complete')` **after** `interstitialAd()` on layer ascend; `ping('game_over')` on run end.
+- `ping('game_over')` on run end — **not** `ping('level_complete')` on layer ascend (use `interstitialAd` instead).
 - `interstitialAd()`: (1) after layer transition on ascend — `runGamePixLevelCompleteAd()`; (2) on restart after game over/victory — `runCommercialBreak()`.
 - `GamePix.localStorage` for scores.
 - **Embed fit**: GamePix QA uses a **800×450 desktop iframe**. Entire game (canvas + HUD/stats/controls) must fit **without vertical scroll**. Portal builds need a dedicated viewport branch — do **not** reuse standalone desktop `maxH = Math.max(480, …)` (480px canvas overflows a 450px-tall iframe).
-- **SDK visible to scanner**: GamePix build injects `<script src="https://gamepix.blob.core.windows.net/gpxlib/dev/gamepix.js" data-emmind-sdk="gamepix">` in `index.html` (see `vite.config.js`). Runtime-only load via `bootstrap.js` alone can fail automated “SDK integration” checks even when hooks work in preview.
+- **SDK visible to scanner**: GamePix build injects inline `platform/gamepix-inline-bridge.js` in `index.html` with literal `GamePix.on.pause/resume/...` and `GamePix.game.gameLoaded` (toolkit static + runtime detection). Loads `gamepix.js` only if `window.GamePix` missing (toolkit host). `hostMenuReady` stays false until `gameLoaded` callback fires.
 - **Language**: In-game UI **100% English** on GamePix (no bilingual or Vietnamese overlay text).
 
 **Form quirks**
@@ -364,7 +364,7 @@ itch (public, embed QA)
 | CrazyGames “SDK mute” checkbox | Tick **only** if `soundOff` wired to CrazyGames SDK |
 | CrazyGames “Data Module” | Tick **Yes** only if `SDK.data` used in `storage.js` |
 | GamePix `gameLoaded` | Menu + Start disabled until `loadingFinished()`; portal `enterMenuAfterLogin` only after `gameLoaded` |
-| GamePix layer ascend | `interstitialAd()` in `finishLayerTransition` **before** `ping('level_complete')` — ping alone shows “Wait… resume” overlay |
+| GamePix layer ascend | `interstitialAd()` only in `finishLayerTransition` — **no** `ping('level_complete')` on ascend |
 | GamePix iframe 800×450 | Test at exact size; portal viewport must not force 480px min canvas height |
 | GamePix title | `<title>`, start overlay `<h2>`, and dashboard form — **same string**, ASCII hyphen |
 | GamePix SDK script in ZIP | `grep gamepix.js dist/index.html` after `npm run package:gamepix` |
@@ -409,7 +409,8 @@ itch (public, embed QA)
 | # | Issue | Fix |
 |---|--------|-----|
 | 1 | SDK flagged but not integrated | Portal menu/start only after `gameLoaded`; static `gamepix.js` in ZIP `<head>` |
-| 2 | “Wait. Game will resume in 4 seconds” at layer 2 | Caused by `ping('level_complete')` without `interstitialAd` — defer ping until after `interstitialAd()` on layer ascend |
+| 2 | “Wait. Game will resume in 4 seconds” at layer 2 | `ping('level_complete')` triggers QA wait overlay — **interstitialAd only** on ascend; `ping('game_over')` on run end |
+| 3 | SDK on review CDN | GamePix build locks adapter: `VITE_PORTAL_TARGET=gamepix` in `resolvePlatformId()` |
 
 **Resubmit checklist**
 

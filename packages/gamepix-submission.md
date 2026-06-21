@@ -100,7 +100,7 @@ npm run test:gamepix-embed
 - [ ] ZIP contains `gamepix.js` in `<head>` with `data-emmind-sdk="gamepix"`
 - [ ] No visible "gamepix" text during gameplay
 - [ ] Start menu disabled until `gameLoaded` (boot finishes before Start is clickable)
-- [ ] Layer ascend: `interstitialAd` before `ping` — no “Wait. Game will resume in 4 seconds”
+- [ ] Layer ascend: `interstitialAd` only — no `ping('level_complete')`
 - [ ] 800×450: play without page scroll
 
 ### 2. SDK Testing Toolkit (before dashboard Submit)
